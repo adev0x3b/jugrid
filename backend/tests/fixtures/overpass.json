@@ -1,0 +1,24 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API (test fixture)",
+  "elements": [
+    {"type": "node", "id": 101, "lat": 45.05, "lon": 7.65,
+     "tags": {"power": "substation", "name": "Cabina Lingotto", "operator": "e-distribuzione", "voltage": "132000;15000"}},
+    {"type": "way", "id": 201, "bounds": {"minlat": 45.1, "minlon": 7.7, "maxlat": 45.102, "maxlon": 7.702},
+     "geometry": [{"lat": 45.1, "lon": 7.7}, {"lat": 45.1, "lon": 7.702}, {"lat": 45.102, "lon": 7.702}, {"lat": 45.102, "lon": 7.7}, {"lat": 45.1, "lon": 7.7}],
+     "tags": {"power": "substation", "name": "Stazione Torino Nord", "voltage": "380000"}},
+    {"type": "relation", "id": 301, "bounds": {"minlat": 44.9, "minlon": 7.9, "maxlat": 44.92, "maxlon": 7.94},
+     "tags": {"power": "plant", "name": "Centrale idroelettrica", "plant:source": "hydro"}},
+    {"type": "way", "id": 401,
+     "geometry": [{"lat": 45.05, "lon": 7.65}, {"lat": 45.1, "lon": 7.7}, {"lat": 45.2, "lon": 7.8}],
+     "tags": {"power": "line", "voltage": "132000", "operator": "Terna"}},
+    {"type": "way", "id": 402,
+     "geometry": [{"lat": 45.0, "lon": 7.6}, {"lat": 45.01, "lon": 7.61}],
+     "tags": {"power": "minor_line", "voltage": "15000"}},
+    {"type": "way", "id": 403,
+     "geometry": [{"lat": 45.06, "lon": 7.66}, {"lat": 45.07, "lon": 7.67}],
+     "tags": {"power": "cable", "location": "underground", "voltage": "unknown"}},
+    {"type": "way", "id": 404, "geometry": [{"lat": 45.06, "lon": 7.66}], "tags": {"power": "line"}},
+    {"type": "node", "id": 501, "lat": 45.0, "lon": 7.0, "tags": {"power": "tower"}}
+  ]
+}
