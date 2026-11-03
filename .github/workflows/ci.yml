@@ -30,6 +30,9 @@ jobs:
       - run: uv run ruff check src tests
       - run: uv run ruff format --check src tests
       - run: uv run mypy src tests
+      # Known vulnerabilities in the locked runtime dependencies.
+      - run: uv export --locked --no-dev --no-emit-project --format requirements-txt -o "$RUNNER_TEMP/requirements.txt"
+      - run: uvx pip-audit@2.10.1 --strict --disable-pip -r "$RUNNER_TEMP/requirements.txt"
       # Integration tests start PostGIS with Testcontainers on the runner's Docker.
       - run: uv run pytest
 
@@ -48,6 +51,7 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
+      - run: npm audit --audit-level=high
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
@@ -93,6 +97,16 @@ jobs:
         with:
           persist-credentials: false
       - run: docker compose build
+      # Fixable HIGH and CRITICAL vulnerabilities in the images that ship fail the build.
+      # Trivy runs from its image, pinned by digest (not the GitHub Action).
+      - name: Scan images
+        env:
+          TRIVY: aquasec/trivy:0.76.0@sha256:2416d1f74045b57274df1a340eee6b510cacd73c66a6ccb8da092b117eb7d222
+        run: |
+          for image in jugrid-api jugrid-web; do
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock:ro -v "$RUNNER_TEMP/trivy:/root/.cache" "$TRIVY" \
+              image --quiet --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$image"
+          done
       - run: docker compose up -d --wait
       - run: docker compose exec -T api python - < backend/tests/seed_e2e.py
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
