@@ -174,12 +174,15 @@ export function MapView(props: MapViewProps) {
   }, []);
 
   useEffect(() => {
-    mapRef.current?.setStyle(STYLE[theme]);
+    // diff: false reloads the whole style, so style.load adds the layers again.
+    mapRef.current?.setStyle(STYLE[theme], { diff: false });
   }, [theme]);
 
+  // Not isStyleLoaded(): it stays false while basemap tiles load, and data that arrives then
+  // would never be drawn. sync() waits for the layers itself; style.load syncs what came before.
   useEffect(() => {
     const map = mapRef.current;
-    if (map?.isStyleLoaded()) sync(map, { ...latest.current, assets, grid, kinds, selected });
+    if (map) sync(map, { ...latest.current, assets, grid, kinds, selected });
   }, [assets, grid, kinds, selected]);
 
   useEffect(() => {

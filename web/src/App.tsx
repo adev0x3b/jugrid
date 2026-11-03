@@ -118,7 +118,7 @@ export function App() {
         <div className="flex min-w-0 flex-1 items-center gap-2 md:flex-none">
           <img src="/favicon.svg" alt="" className="size-7" />
           <h1 className="text-lg font-bold tracking-tight">JuGrid</h1>
-          <span className="truncate text-sm text-slate-600 dark:text-slate-400">
+          <span className="hidden truncate text-sm text-slate-600 sm:inline dark:text-slate-400">
             {m.region} power grid
           </span>
         </div>
@@ -149,7 +149,7 @@ export function App() {
               </svg>
             ) : (
               <svg aria-hidden="true" viewBox="0 0 20 20" className="size-5" fill="currentColor">
-                <path d="M17.3 13.4A7.5 7.5 0 0 1 6.6 2.7a.6.6 0 0 0-.8-.7 8.5 8.5 0 1 0 12.2 12.2.6.6 0 0 0-.7-.8Z" />
+                <path d="M7.455 2.004a.75.75 0 0 1 .26.77 7 7 0 0 0 9.958 7.967.75.75 0 0 1 1.067.853A8.5 8.5 0 1 1 6.647 1.921a.75.75 0 0 1 .808.083Z" />
               </svg>
             )}
           </button>

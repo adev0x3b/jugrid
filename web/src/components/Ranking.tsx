@@ -1,5 +1,5 @@
 import type { RankedAsset } from "../api";
-import { formatChange, formatKv } from "../lib/format";
+import { formatChange, formatKm, formatKv } from "../lib/format";
 import { KIND_SINGULAR } from "../lib/levels";
 import { LevelDot } from "./LevelDot";
 
@@ -68,7 +68,12 @@ export function Ranking({
                     {row.name ?? `Unnamed ${KIND_SINGULAR[row.kind].toLowerCase()}`}
                   </span>
                   <span className="block truncate text-xs text-slate-600 dark:text-slate-400">
-                    {[KIND_SINGULAR[row.kind], formatKv(row.voltage_kv), row.operator]
+                    {[
+                      KIND_SINGULAR[row.kind],
+                      formatKv(row.voltage_kv),
+                      row.length_km > 0 ? formatKm(row.length_km) : null,
+                      row.operator,
+                    ]
                       .filter(Boolean)
                       .join(" · ")}
                   </span>
