@@ -15,3 +15,7 @@ infra/*.tfstate*
 infra/backend.hcl
 infra/*.tfvars
 .proxy-ca.crt
+.coverage
+*.tsbuildinfo
+backend/mlruns/
+*.db
