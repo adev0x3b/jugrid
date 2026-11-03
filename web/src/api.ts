@@ -29,6 +29,37 @@ export interface Run {
   detail: string | null;
 }
 
+export type GridSource = "corrected" | "raw";
+
+/** The model card of the bias correction the scores use. */
+export interface Correction {
+  version: string;
+  method: string;
+  climate_model: string;
+  reference: string;
+  trained_on: [number, number];
+  held_out_from: number;
+  variables: Record<
+    string,
+    {
+      transform: "difference" | "ratio";
+      unit: string;
+      held_out_years: { raw: number; empirical: number; model: number };
+      held_out_cells: { raw: number; model: number };
+    }
+  >;
+  indicators: Record<
+    string,
+    {
+      observed_mean: number;
+      raw_mean: number;
+      model_mean: number;
+      raw_error: number;
+      model_error: number;
+    }
+  >;
+}
+
 export interface Meta {
   region: string;
   bbox: [number, number, number, number];
@@ -39,6 +70,7 @@ export interface Meta {
   vulnerability: Record<Kind, Record<HazardKey, number>>;
   sources: { name: string; url: string; license: string }[];
   runs: Run[];
+  correction: Correction | null;
 }
 
 export interface Risk {
@@ -130,7 +162,7 @@ export const api = {
   summary: (scenario: ScenarioKey) => get<KindSummary[]>("/api/summary", query({ scenario })),
   ranking: (scenario: ScenarioKey, view: View, kinds: Kind[], order: "score" | "change") =>
     get<RankedAsset[]>("/api/ranking", query({ scenario, view, kind: kinds, order, limit: 25 })),
-  grid: (hazard: HazardKey, scenario: ScenarioKey) =>
-    get<GeoJSON.FeatureCollection>(`/api/grid/${hazard}`, query({ scenario })),
+  grid: (hazard: HazardKey, scenario: ScenarioKey, correction: GridSource) =>
+    get<GeoJSON.FeatureCollection>(`/api/grid/${hazard}`, query({ scenario, correction })),
   exportUrl: (scenario: ScenarioKey) => `/api/export.csv?${query({ scenario })}`,
 };

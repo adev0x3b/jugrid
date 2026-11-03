@@ -36,6 +36,67 @@ region needs the whole file. The ingest downloads it, cuts the region's cells ou
 to the Zarr store (`daily/<scenario>/<variable>/<year>`) and deletes the file. A year is marked
 complete only once written, so an interrupted ingest resumes where it stopped.
 
+## Bias correction
+
+NEX-GDDP-CMIP6 is already corrected against a global observed dataset, but a 25 km cell in the
+Alps or the Po valley still runs warm or cold, wet or dry against the weather that was really
+measured there. JuGrid corrects it again, against [E-OBS](https://surfobs.climate.copernicus.eu/)
+v32.0e: the European daily station network gridded at the same 0.25°, with many more stations
+in Piemonte than the global products.
+
+The method is quantile delta mapping (Cannon et al. 2015). For each cell and month, the model's
+q-th quantile over 1995–2014 is set against the observed q-th quantile; the difference (a ratio
+for rain and wind) is the correction at q. A projected day is corrected by the delta at its own
+quantile within its own period, so the change the model projects to 2050 is kept, and a hotter
+future is not capped at the historical record.
+
+Doing that cell by cell from 20 years of data is noisy, worst in the tails where the hazards
+are. So a gradient-boosted model (scikit-learn's `HistGradientBoostingRegressor`) learns the
+delta from five features, the quantile, the season (as sine and cosine of the month) and the
+cell's latitude and longitude, one model per variable. It is smooth across months and
+neighbouring cells, and it corrects a cell it never saw.
+
+How it is checked, on every training run:
+
+- **Unseen years.** Trained on 1995–2009, scored on 2010–2014: mean absolute error of the
+  monthly quantiles against E-OBS, for the raw projections, for per-cell empirical quantile
+  mapping and for the model.
+- **Unseen cells.** Five folds over the cells: trained without a fold's cells, scored on them.
+  Empirical mapping cannot do this at all.
+- **The indicators themselves.** Days above 35 °C, wettest day, windiest day and wet snow days,
+  raw and corrected, against the same indicators computed from E-OBS.
+
+For the shipped model (Piemonte, EC-Earth3, 1995–2014), mean absolute error against E-OBS:
+
+| Variable | Unseen years: raw | empirical | model | Unseen cells: raw | model |
+|---|---|---|---|---|---|
+| Daily maximum temperature, °C | 1.59 | 1.15 | 1.15 | 1.33 | 0.57 |
+| Daily mean temperature, °C | 1.58 | 1.12 | 1.10 | 1.19 | 0.58 |
+| Daily rainfall, mm | 1.99 | 1.25 | 1.22 | 1.69 | 0.55 |
+| Daily mean wind, m/s | 0.89 | 0.28 | 0.28 | 0.92 | 0.20 |
+
+| Indicator | Observed | Raw error | Corrected error |
+|---|---|---|---|
+| Days above 35 °C | 0.17 days/yr | 0.49 | 0.78 |
+| Wettest day | 60.5 mm | 15.3 | 13.1 |
+| Windiest day | 5.45 m/s | 2.49 | 0.66 |
+| Wet snow days | 4.06 days/yr | 1.88 | 1.17 |
+
+Days above 35 °C come out worse: the region saw about one such day every six years, so the
+corrected tail above 35 °C rests on very few observed days. The other three improve, wind most.
+
+The numbers are in the model card, which the API serves in `/api/meta` and the app shows under
+"About the data". The ingest scores assets on the corrected grid and keeps the raw one; the app
+can show either.
+
+The model is trained offline (`python -m jugrid.correction.train`, see the README), tracked in
+MLflow, exported to ONNX and committed with its card. The ingest runs it with ONNX Runtime, so
+the images carry no training libraries. It applies only to the region and climate model it
+was trained for; anywhere else the ingest logs that and scores the raw projections.
+
+E-OBS wind sits on a grid shifted 0.1° from its temperature and rain; it is interpolated onto
+the model's cells before the quantiles are compared.
+
 ## Indicators
 
 Computed per cell with xarray, as the mean over the period of a yearly value:
@@ -89,6 +150,10 @@ The marks and weights live in `backend/src/jugrid/risk/hazards.py`; the API serv
 ## Limits
 
 - One climate model. A model ensemble would give a range instead of a value.
+- The bias correction fixes the model's distribution in each cell and month against what was
+  observed, not its sequence of days, and it cannot fix a change the model gets wrong.
+- E-OBS wind is a daily mean from fewer stations than temperature and rain; its correction is
+  the least certain.
 - 25 km cells: a valley and the ridge above it can share one.
 - No asset age, condition, design standard or redundancy: exposure, not vulnerability of a
   specific asset.

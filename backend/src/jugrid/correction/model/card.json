@@ -1,0 +1,112 @@
+{
+  "version": "2026-11-03-f627e82",
+  "method": "Quantile delta mapping learnt by gradient boosting, per cell and month",
+  "climate_model": "EC-Earth3",
+  "reference": "E-OBS v32.0e ensemble mean",
+  "bbox": [
+    6.62,
+    44.06,
+    9.22,
+    46.47
+  ],
+  "trained_on": [
+    1995,
+    2014
+  ],
+  "held_out_from": 2010,
+  "features": [
+    "quantile",
+    "season_sin",
+    "season_cos",
+    "lat",
+    "lon"
+  ],
+  "variables": {
+    "tasmax": {
+      "transform": "difference",
+      "unit": "°C",
+      "held_out_years": {
+        "raw": 1.5881012712241322,
+        "empirical": 1.1517275548403298,
+        "model": 1.1453516007671047
+      },
+      "held_out_cells": {
+        "raw": 1.334622651921919,
+        "model": 0.5677433864810105
+      },
+      "rows": 129780
+    },
+    "tas": {
+      "transform": "difference",
+      "unit": "°C",
+      "held_out_years": {
+        "raw": 1.5810138039169743,
+        "empirical": 1.1193516415809615,
+        "model": 1.103702711583947
+      },
+      "held_out_cells": {
+        "raw": 1.1940910648904792,
+        "model": 0.5820736419293948
+      },
+      "rows": 129780
+    },
+    "pr": {
+      "transform": "ratio",
+      "unit": "mm",
+      "held_out_years": {
+        "raw": 1.99235204944344,
+        "empirical": 1.2542131345940668,
+        "model": 1.2180590900609587
+      },
+      "held_out_cells": {
+        "raw": 1.693769488797874,
+        "model": 0.5528031771319705
+      },
+      "rows": 129780
+    },
+    "sfcWind": {
+      "transform": "ratio",
+      "unit": "m/s",
+      "held_out_years": {
+        "raw": 0.8912480156419688,
+        "empirical": 0.2813044898781542,
+        "model": 0.27617747203111126
+      },
+      "held_out_cells": {
+        "raw": 0.9212935813987113,
+        "model": 0.20259682869454926
+      },
+      "rows": 118656
+    }
+  },
+  "indicators": {
+    "hot_days": {
+      "observed_mean": 0.17142857142857143,
+      "raw_mean": 0.622429906542056,
+      "model_mean": 0.9682242990654206,
+      "raw_error": 0.4857142857142857,
+      "model_error": 0.7771428571428572
+    },
+    "wettest_day": {
+      "observed_mean": 60.5333366394043,
+      "raw_mean": 49.95146942138672,
+      "model_mean": 49.503807067871094,
+      "raw_error": 15.325489044189453,
+      "model_error": 13.115090370178223
+    },
+    "windiest_day": {
+      "observed_mean": 5.450962377885976,
+      "raw_mean": 7.473520278930664,
+      "model_mean": 5.626965522766113,
+      "raw_error": 2.4885649068156868,
+      "model_error": 0.6584040476878462
+    },
+    "wet_snow_days": {
+      "observed_mean": 4.060952380952381,
+      "raw_mean": 4.856074766355141,
+      "model_mean": 3.728971962616823,
+      "raw_error": 1.878095238095238,
+      "model_error": 1.1714285714285715
+    }
+  }
+}

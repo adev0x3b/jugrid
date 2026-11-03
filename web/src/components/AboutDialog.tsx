@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { HazardKey, Meta } from "../api";
 import { formatDate } from "../lib/format";
 import { KIND_LABEL } from "../lib/levels";
+import { CorrectionCard } from "./CorrectionCard";
 
 export function AboutDialog({
   meta,
@@ -47,9 +48,10 @@ export function AboutDialog({
         <p>
           Every substation, plant, line and cable OpenStreetMap knows in {meta.region} is checked
           against five hazards. Climate hazards come from the daily {meta.climate_model} projections
-          of NASA's NEX-GDDP-CMIP6, bias-corrected at 0.25° (about 25 km). A line reads every cell
-          it crosses and keeps the worst. Flood depth comes from the Copernicus 1-in-100-year river
-          flood map at about 90 m.
+          of NASA's NEX-GDDP-CMIP6 at 0.25° (about 25 km)
+          {meta.correction ? ", corrected against observed weather (below)" : ""}. A line reads
+          every cell it crosses and keeps the worst. Flood depth comes from the Copernicus
+          1-in-100-year river flood map at about 90 m.
         </p>
 
         <section>
@@ -94,6 +96,8 @@ export function AboutDialog({
             </table>
           </div>
         </section>
+
+        {meta.correction && <CorrectionCard card={meta.correction} />}
 
         <section>
           <h3 className="mb-1 font-semibold">How much each hazard hurts each asset</h3>

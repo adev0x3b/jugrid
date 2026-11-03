@@ -9,12 +9,13 @@ describe("map state in the address", () => {
       kinds: ALL_KINDS,
       asset: null,
       grid: false,
+      raw: false,
     });
     expect(serialize(parse(""))).toBe("");
   });
 
   it("round-trips a shared link", () => {
-    const search = "?scenario=ssp585_2050&view=wind&kinds=line%2Cminor_line&asset=42&grid=1";
+    const search = "?scenario=ssp585_2050&view=wind&kinds=line%2Cminor_line&asset=42&grid=1&raw=1";
     const state = parse(search);
     expect(state).toEqual({
       scenario: "ssp585_2050",
@@ -22,6 +23,7 @@ describe("map state in the address", () => {
       kinds: ["line", "minor_line"],
       asset: 42,
       grid: true,
+      raw: true,
     });
     expect(serialize(state)).toBe(search);
   });

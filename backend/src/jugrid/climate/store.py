@@ -3,7 +3,8 @@
 Layout::
 
     daily/<scenario>/<variable>/<year>   one year of one variable, (time, lat, lon)
-    indicators                           every indicator, (scenario, lat, lon)
+    indicators                           every indicator, (scenario, lat, lon), as scored
+    indicators_raw                       the same from the uncorrected projections
 
 A year is written whole and then marked ``complete``, so an interrupted ingest starts again
 from the first year that is not.
@@ -15,7 +16,8 @@ import xarray as xr
 import zarr
 from zarr.storage import FsspecStore, LocalStore, StoreLike
 
-INDICATORS_GROUP = "indicators"
+INDICATORS_GROUP = "indicators"  # what the scores use: bias-corrected when a model applies
+RAW_INDICATORS_GROUP = "indicators_raw"  # from the projections as published
 
 
 def open_store(url: str, storage_options: dict[str, Any] | None = None) -> StoreLike:
@@ -58,16 +60,14 @@ class ClimateStore:
         joined: xr.DataArray = xr.concat(parts, dim="time")
         return joined
 
-    def write_indicators(self, indicators: xr.Dataset) -> None:
-        indicators.to_zarr(
-            self.store, group=INDICATORS_GROUP, mode="w", consolidated=False, zarr_format=3
-        )
+    def write_indicators(self, indicators: xr.Dataset, *, raw: bool = False) -> None:
+        group = RAW_INDICATORS_GROUP if raw else INDICATORS_GROUP
+        indicators.to_zarr(self.store, group=group, mode="w", consolidated=False, zarr_format=3)
 
-    def read_indicators(self) -> xr.Dataset | None:
+    def read_indicators(self, *, raw: bool = False) -> xr.Dataset | None:
+        group = RAW_INDICATORS_GROUP if raw else INDICATORS_GROUP
         try:
-            loaded: xr.Dataset = xr.open_zarr(
-                self.store, group=INDICATORS_GROUP, consolidated=False
-            ).load()
+            loaded: xr.Dataset = xr.open_zarr(self.store, group=group, consolidated=False).load()
             return loaded
         except FileNotFoundError, zarr.errors.GroupNotFoundError, KeyError:
             return None

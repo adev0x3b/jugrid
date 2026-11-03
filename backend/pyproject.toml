@@ -13,6 +13,7 @@ dependencies = [
   "h5py>=3.16",
   "httpx>=0.28",
   "numpy>=2.5",
+  "onnxruntime>=1.31",
   "psycopg[binary]>=3.3",
   "pydantic-settings>=2.16",
   "rasterio>=1.5",
@@ -40,6 +41,16 @@ dev = [
   "testcontainers[postgres]>=4.15",
   "pytest-cov>=7.0",
 ]
+ml = [
+    "mlflow-skinny>=3.17",
+    "onnx>=1.23",
+    "scikit-learn>=1.9",
+    "skl2onnx>=1.20",
+]
+
+[tool.uv]
+# The ml group trains the bias-correction model; images only run it (onnxruntime).
+default-groups = ["dev", "ml"]
 
 [build-system]
 requires = ["hatchling"]
@@ -52,7 +63,12 @@ packages = ["src/jugrid"]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
 markers = ["integration: needs Docker (PostGIS in a container)"]
-filterwarnings = ["error::DeprecationWarning", "error::FutureWarning"]
+filterwarnings = [
+  "error::DeprecationWarning",
+  "error::FutureWarning",
+  # MLflow's own tracking store, not this code.
+  "ignore:The ``noload`` loader strategy is deprecated:DeprecationWarning",
+]
 
 [tool.ruff]
 line-length = 100
@@ -73,7 +89,7 @@ plugins = ["pydantic.mypy"]
 mypy_path = "src"
 
 [[tool.mypy.overrides]]
-module = ["rasterio.*", "s3fs.*", "geoalchemy2.*", "testcontainers.*", "h5netcdf.*", "zarr.*", "respx.*"]
+module = ["rasterio.*", "s3fs.*", "geoalchemy2.*", "testcontainers.*", "h5netcdf.*", "zarr.*", "respx.*", "onnxruntime.*", "skl2onnx.*", "sklearn.*", "mlflow.*"]
 ignore_missing_imports = true
 
 [tool.coverage.run]

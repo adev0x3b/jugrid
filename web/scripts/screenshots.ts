@@ -59,5 +59,12 @@ await shoot("phone-lists", "/?scenario=ssp585_2050", {
     await page.getByRole("button", { name: "Hazards, assets and the most exposed" }).click();
   },
 });
+await shoot("model-card", "/?scenario=ssp585_2050&view=heat&grid=1", {
+  act: async (page) => {
+    await page.getByRole("button", { name: "About the data" }).click();
+    await page.locator("#correction-title").scrollIntoViewIfNeeded();
+  },
+});
+await shoot("raw-grid", "/?scenario=ssp585_2050&view=heat&grid=1&raw=1", { dark: true });
 
 await browser.close();

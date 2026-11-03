@@ -19,6 +19,8 @@ It ships set up for Piemonte; any ISO 3166-2 region works.
   overlay.
 - Three scenarios: today (1995–2014), 2050 middle road (SSP2-4.5), 2050 high emissions
   (SSP5-8.5).
+- Projections corrected against observed weather (E-OBS) by a gradient-boosted quantile
+  mapping model, with its model card in the app and a switch back to the raw projections.
 - The most exposed assets, or the ones whose risk grows fastest, filtered by kind.
 - Each asset's hazards side by side across scenarios, with a link to it on OpenStreetMap.
 - CSV export of every asset with every score.
@@ -76,6 +78,7 @@ The API and the ingest read `JUGRID_*` variables; the full list is in
 | `JUGRID_CLIMATE_MODEL` | `EC-Earth3` | Any NEX-GDDP-CMIP6 model with `r1i1p1f1` |
 | `JUGRID_OVERPASS_URL` | `https://overpass-api.de/api/interpreter` | Overpass instance |
 | `JUGRID_LOG_FORMAT` | `json` | `json` (one object per line, with request ids) or `text` |
+| `JUGRID_BIAS_CORRECTION` | `true` | Correct the projections with the shipped model (only where it was trained) |
 
 ## Deploying to AWS
 
@@ -155,6 +158,22 @@ cd web && npx playwright test
 
 The API is described at http://127.0.0.1:8096/api/openapi.json.
 
+### Training the bias correction
+
+The shipped model in `backend/src/jugrid/correction/model/` was trained for Piemonte and
+EC-Earth3, on 1995–2014. For another region, train one; `--fetch` first downloads the model's
+historical run and the E-OBS years into a local store (about 20 GB pass through, a few MB stay):
+
+```sh
+cd backend
+uv run python -m jugrid.correction.train --fetch --store /tmp/climate.zarr \
+  --bbox 6.62,44.06,9.22,46.47 --tracking-uri sqlite:///mlflow.db
+uv run --with mlflow mlflow ui --backend-store-uri sqlite:///mlflow.db   # compare runs
+```
+
+It writes the ONNX models and `card.json` into the package; commit them, and the next ingest
+uses them.
+
 The screenshots above come from the Screenshots workflow (run it from the Actions tab): it
 loads the real sources into the compose stack and runs `web/scripts/screenshots.ts`.
 
@@ -162,6 +181,7 @@ loads the real sources into the compose stack and runs `web/scripts/screenshots.
 
 - Pipeline and API: Python 3.14, FastAPI, SQLAlchemy, PostgreSQL with PostGIS, xarray, Zarr,
   rasterio, Shapely, httpx; pytest with Hypothesis and Testcontainers.
+- Bias correction: scikit-learn, MLflow, ONNX (trained offline), ONNX Runtime in the ingest.
 - Web: React 19, TypeScript, Vite, Tailwind CSS, MapLibre GL, TanStack Query; Vitest,
   Playwright with axe.
 - Storage: S3 (SeaweedFS locally) for the Zarr store.
@@ -175,6 +195,7 @@ loads the real sources into the compose stack and runs `web/scripts/screenshots.
 | Power assets: © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors | ODbL 1.0 |
 | Climate: [NASA NEX-GDDP-CMIP6](https://registry.opendata.aws/nex-gddp-cmip6/), EC-Earth3 | CC BY 4.0 |
 | River flood: [Copernicus EMS / JRC global flood hazard maps](https://data.jrc.ec.europa.eu/collection/id-0054) | ODbL 1.0 |
+| Observed weather: [E-OBS](https://surfobs.climate.copernicus.eu/) v32.0e, C3S and the ECA&D data providers (Cornes et al. 2018) | [E-OBS data policy](https://surfobs.climate.copernicus.eu/dataaccess/access_eobs.php) |
 | Base map: [OpenFreeMap](https://openfreemap.org), © OpenMapTiles, © OpenStreetMap contributors | |
 
 A screening tool: it shows where to look, it does not assess any single asset's design or

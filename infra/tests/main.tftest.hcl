@@ -186,7 +186,7 @@ run "only_cloudfront_reaches_the_load_balancer" {
 
   assert {
     condition = toset(one(one(one(aws_cloudfront_cache_policy.api.parameters_in_cache_key_and_forwarded_to_origin).query_strings_config).query_strings).items) == toset([
-      "kind", "scenario", "view", "order", "limit",
+      "kind", "scenario", "view", "order", "limit", "correction",
     ])
     error_message = "The cache key is the API's parameters only: made-up ones must not bypass the cache."
   }

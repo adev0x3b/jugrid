@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     download_workers: int = Field(default=4, ge=1, le=16)
     flood_url: str = "https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/CEMS-GLOFAS/flood_hazard"
     flood_return_period: int = 100
+    # Correct the projections against observed weather with the shipped model, when it was
+    # trained for this region and climate model.
+    bias_correction: bool = True
 
     cors_origins: list[str] = []
 

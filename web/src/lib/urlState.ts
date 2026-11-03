@@ -8,6 +8,8 @@ export interface MapState {
   kinds: Kind[];
   asset: number | null;
   grid: boolean;
+  /** The climate grid from the raw projections instead of the bias-corrected ones. */
+  raw: boolean;
 }
 
 const SCENARIOS: ScenarioKey[] = ["baseline", "ssp245_2050", "ssp585_2050"];
@@ -28,6 +30,7 @@ export function parse(search: string): MapState {
     kinds: kinds.length ? kinds : ALL_KINDS,
     asset: Number.isInteger(asset) && asset > 0 ? asset : null,
     grid: params.get("grid") === "1",
+    raw: params.get("raw") === "1",
   };
 }
 
@@ -38,6 +41,7 @@ export function serialize(state: MapState): string {
   if (state.kinds.length !== ALL_KINDS.length) params.set("kinds", state.kinds.join(","));
   if (state.asset !== null) params.set("asset", String(state.asset));
   if (state.grid) params.set("grid", "1");
+  if (state.raw) params.set("raw", "1");
   const text = params.toString();
   return text ? `?${text}` : "";
 }

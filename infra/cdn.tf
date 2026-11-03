@@ -26,7 +26,7 @@ resource "aws_cloudfront_cache_policy" "api" {
     query_strings_config {
       query_string_behavior = "whitelist"
       query_strings {
-        items = ["kind", "scenario", "view", "order", "limit"]
+        items = ["kind", "scenario", "view", "order", "limit", "correction"]
       }
     }
   }

@@ -37,6 +37,45 @@ class RunOut(BaseModel):
     detail: str | None
 
 
+class HeldOutYearsOut(BaseModel):
+    raw: float
+    empirical: float
+    model: float
+
+
+class HeldOutCellsOut(BaseModel):
+    raw: float
+    model: float
+
+
+class VariableScoreOut(BaseModel):
+    transform: str
+    unit: str
+    held_out_years: HeldOutYearsOut
+    held_out_cells: HeldOutCellsOut
+
+
+class IndicatorScoreOut(BaseModel):
+    observed_mean: float
+    raw_mean: float
+    model_mean: float
+    raw_error: float
+    model_error: float
+
+
+class CorrectionOut(BaseModel):
+    """The model card of the bias correction the scores use."""
+
+    version: str
+    method: str
+    climate_model: str
+    reference: str
+    trained_on: tuple[int, int]
+    held_out_from: int
+    variables: dict[str, VariableScoreOut]
+    indicators: dict[str, IndicatorScoreOut]
+
+
 class Meta(BaseModel):
     region: str
     bbox: tuple[float, float, float, float]
@@ -47,6 +86,7 @@ class Meta(BaseModel):
     vulnerability: dict[str, dict[str, float]]
     sources: list[SourceOut]
     runs: list[RunOut]
+    correction: CorrectionOut | None
 
 
 class RiskOut(BaseModel):

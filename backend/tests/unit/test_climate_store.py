@@ -1,4 +1,6 @@
+import json
 from pathlib import Path
+from typing import Any, ClassVar
 
 import numpy as np
 import pytest
@@ -81,3 +83,40 @@ def test_compute_stacks_every_indicator_by_scenario(store: ClimateStore) -> None
 
 def test_no_indicators_yet_is_none(store: ClimateStore) -> None:
     assert store.read_indicators() is None
+
+
+class Warmer:
+    """A stand-in correction: two degrees warmer, everything else as projected."""
+
+    version = "test-1"
+    card: ClassVar[dict[str, Any]] = {"version": "test-1", "method": "plus two"}
+
+    def correct(self, data: xr.DataArray, variable: str) -> xr.DataArray:
+        return data + 2 if variable == "tasmax" else data
+
+
+def test_with_a_correction_the_scores_use_corrected_indicators_and_raw_ones_are_kept(
+    store: ClimateStore,
+) -> None:
+    ingest.fill(store, [BASELINE], fake_climate)
+    result = ingest.compute(store, [BASELINE], "test-model", correction=Warmer())
+    # 30 °C becomes 32: still not hot; the ten 36 °C days stay hot.
+    assert float(result.hot_days.mean()) == pytest.approx(10)
+    assert result.attrs["correction"] == "test-1"
+    corrected, raw = store.read_indicators(), store.read_indicators(raw=True)
+    assert corrected is not None
+    assert raw is not None
+    assert raw.attrs["correction"] == "none"
+    assert corrected.attrs["correction"] == "test-1"
+    assert json.loads(corrected.attrs["correction_card"])["method"] == "plus two"
+
+
+def test_without_a_correction_raw_and_scored_indicators_are_the_same(
+    store: ClimateStore,
+) -> None:
+    ingest.fill(store, [BASELINE], fake_climate)
+    result = ingest.compute(store, [BASELINE], "test-model")
+    assert result.attrs["correction"] == "none"
+    raw = store.read_indicators(raw=True)
+    assert raw is not None
+    xr.testing.assert_allclose(raw.hot_days, result.hot_days)

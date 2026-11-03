@@ -1,10 +1,12 @@
 """Fill the store with the region's daily climate, then compute the indicators."""
 
+import json
 import logging
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, Protocol
 
 import httpx
 import xarray as xr
@@ -77,33 +79,69 @@ def fill(
     return written
 
 
-def compute(store: ClimateStore, scenarios: Sequence[Scenario], model: str) -> xr.Dataset:
-    """Every indicator for every scenario, stacked along a ``scenario`` dimension."""
-    per_scenario = []
+class Correction(Protocol):
+    @property
+    def version(self) -> str: ...
+
+    @property
+    def card(self) -> dict[str, Any]:
+        """The model card, kept with the indicators it produced."""
+        ...
+
+    def correct(self, data: xr.DataArray, variable: str) -> xr.DataArray: ...
+
+
+def _indicators(daily: dict[str, xr.DataArray]) -> xr.Dataset:
+    return xr.Dataset(
+        {
+            "hot_days": indicators.hot_days(daily["tasmax"]),
+            "wettest_day": indicators.wettest_day(daily["pr"]),
+            "windiest_day": indicators.windiest_day(daily["sfcWind"]),
+            "wet_snow_days": indicators.wet_snow_days(daily["tas"], daily["pr"]),
+        }
+    ).compute()
+
+
+def compute(
+    store: ClimateStore,
+    scenarios: Sequence[Scenario],
+    model: str,
+    correction: Correction | None = None,
+) -> xr.Dataset:
+    """Every indicator for every scenario, stacked along a ``scenario`` dimension.
+
+    With a ``correction``, the daily data is bias-corrected first and the corrected indicators
+    are the ones stored for scoring; the raw ones are stored next to them either way.
+    """
+    raw_parts, scored_parts = [], []
     for scenario in scenarios:
         years = range(scenario.start_year, scenario.end_year + 1)
-        tasmax = store.read_period(scenario.key, "tasmax", years)
-        tas = store.read_period(scenario.key, "tas", years)
-        pr = store.read_period(scenario.key, "pr", years)
-        wind = store.read_period(scenario.key, "sfcWind", years)
-        per_scenario.append(
-            xr.Dataset(
-                {
-                    "hot_days": indicators.hot_days(tasmax),
-                    "wettest_day": indicators.wettest_day(pr),
-                    "windiest_day": indicators.windiest_day(wind),
-                    "wet_snow_days": indicators.wet_snow_days(tas, pr),
-                }
-            )
-            .compute()
-            .expand_dims(scenario=[scenario.key])
+        daily = {v: store.read_period(scenario.key, v, years).load() for v in nexgddp.VARIABLES}
+        raw = _indicators(daily).expand_dims(scenario=[scenario.key])
+        raw_parts.append(raw)
+        if correction is None:
+            scored_parts.append(raw)
+        else:
+            corrected = {v: correction.correct(data, v) for v, data in daily.items()}
+            scored_parts.append(_indicators(corrected).expand_dims(scenario=[scenario.key]))
+            log.info("%s: bias-corrected with model %s", scenario.key, correction.version)
+    attrs = {
+        "model": model,
+        "source": "NASA NEX-GDDP-CMIP6",
+        "periods": {s.key: [s.start_year, s.end_year] for s in scenarios},
+        "computed_at": datetime.now(UTC).isoformat(timespec="seconds"),
+    }
+    raw_all = xr.concat(raw_parts, dim="scenario").astype("float32")
+    raw_all.attrs.update(attrs, correction="none")
+    store.write_indicators(raw_all, raw=True)
+    if correction is None:
+        result = raw_all
+    else:
+        result = xr.concat(scored_parts, dim="scenario").astype("float32")
+        result.attrs.update(
+            attrs,
+            correction=correction.version,
+            correction_card=json.dumps(correction.card, ensure_ascii=False),
         )
-    result = xr.concat(per_scenario, dim="scenario").astype("float32")
-    result.attrs.update(
-        model=model,
-        source="NASA NEX-GDDP-CMIP6",
-        periods={s.key: [s.start_year, s.end_year] for s in scenarios},
-        computed_at=datetime.now(UTC).isoformat(timespec="seconds"),
-    )
     store.write_indicators(result)
     return result
