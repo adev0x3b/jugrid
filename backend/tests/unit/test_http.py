@@ -22,11 +22,12 @@ def test_a_redirect_to_plain_http_is_refused() -> None:
 
 
 @respx.mock
-def test_a_plain_http_source_is_refused_before_any_request() -> None:
+def test_a_plain_http_source_is_refused_before_any_request(tmp_path: Path) -> None:
     route = respx.get("http://flood.test/tile_extents.geojson").mock(httpx.Response(200))
     with http.client() as client, pytest.raises(jrcflood.FloodSourceError, match="HTTPS"):
-        jrcflood.fetch_tiles(client, "http://flood.test", 100, PIEMONTE, Path("/nonexistent"))
+        jrcflood.fetch_tiles(client, "http://flood.test", 100, PIEMONTE, tmp_path)
     assert not route.called
+    assert list(tmp_path.iterdir()) == []
 
 
 @respx.mock
