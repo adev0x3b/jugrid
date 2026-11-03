@@ -62,7 +62,9 @@ await shoot("phone-lists", "/?scenario=ssp585_2050", {
 await shoot("model-card", "/?scenario=ssp585_2050&view=heat&grid=1", {
   act: async (page) => {
     await page.getByRole("button", { name: "About the data" }).click();
-    await page.locator("#correction-title").scrollIntoViewIfNeeded();
+    await page
+      .locator("#correction-title")
+      .evaluate((title) => title.scrollIntoView({ block: "start" }));
   },
 });
 await shoot("raw-grid", "/?scenario=ssp585_2050&view=heat&grid=1&raw=1", { dark: true });
