@@ -1,0 +1,45 @@
+# Checks this setup does not follow, and why. Everything else must pass.
+framework:
+  - terraform
+compact: true
+quiet: true
+skip-check:
+  # No custom domain: CloudFront serves *.cloudfront.net with AWS's certificate, which fixes
+  # the TLS policy and makes HSTS preload meaningless. A domain adds an ACM certificate.
+  - CKV2_AWS_42
+  - CKV_AWS_174
+  - CKV_AWS_259
+  # The load balancer speaks HTTP to CloudFront only: its security group admits CloudFront's
+  # origin-facing prefix list (not 0.0.0.0/0, which the rule assumes) and its listener answers
+  # 403 to requests without the secret origin header. TLS ends at CloudFront.
+  - CKV_AWS_2
+  - CKV_AWS_103
+  - CKV2_AWS_20
+  - CKV_AWS_378
+  - CKV_AWS_260
+  # WAF costs more than the rest of the stack for a read-only, unauthenticated API.
+  - CKV_AWS_68
+  - CKV2_AWS_28
+  - CKV2_AWS_47
+  # The web and log buckets use S3-managed keys: CloudFront delivers logs and reads the site
+  # without KMS grants. The climate store uses the project key.
+  - CKV_AWS_145
+  # CloudFront's standard log delivery needs ACLs on the log bucket.
+  - CKV2_AWS_65
+  # Everything in S3 is rebuilt by the ingest or the deploy; replication and event hooks
+  # would copy data that can be regenerated.
+  - CKV_AWS_144
+  - CKV2_AWS_62
+  # One availability zone for the database and one origin: a trial-sized deployment.
+  # Set multi_az for production.
+  - CKV_AWS_157
+  - CKV_AWS_310
+  # Logs are kept for var.log_retention_days (90 by default), not a year.
+  - CKV_AWS_338
+  # The map is for anyone: no geo restriction.
+  - CKV_AWS_374
+  # The ingest security group is attached by the scheduler's network configuration,
+  # which checkov does not follow.
+  - CKV2_AWS_5
+  # The first two zones of the region are taken on purpose.
+  - CKV_AWS_394

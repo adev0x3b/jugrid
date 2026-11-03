@@ -1,0 +1,127 @@
+locals {
+  ecs_trust = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "ecs-tasks.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+      Condition = { StringEquals = { "aws:SourceAccount" = local.account_id } }
+    }]
+  })
+}
+
+# Pulls the image, writes logs, reads the database password.
+resource "aws_iam_role" "execution" {
+  name               = "${var.project}-execution"
+  assume_role_policy = local.ecs_trust
+}
+
+resource "aws_iam_role_policy_attachment" "execution" {
+  role       = aws_iam_role.execution.name
+  policy_arn = "${local.arn_prefix}:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+resource "aws_iam_role_policy" "execution_secret" {
+  name = "database-secret"
+  role = aws_iam_role.execution.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "secretsmanager:GetSecretValue"
+        Resource = aws_db_instance.main.master_user_secret[0].secret_arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = "kms:Decrypt"
+        Resource = aws_kms_key.main.arn
+      },
+    ]
+  })
+}
+
+# The API only reads the climate store; the ingest writes it.
+resource "aws_iam_role" "api" {
+  name               = "${var.project}-api"
+  assume_role_policy = local.ecs_trust
+}
+
+resource "aws_iam_role" "ingest" {
+  name               = "${var.project}-ingest"
+  assume_role_policy = local.ecs_trust
+}
+
+resource "aws_iam_role_policy" "store" {
+  for_each = {
+    api    = { role = aws_iam_role.api.id, actions = ["s3:GetObject"] }
+    ingest = { role = aws_iam_role.ingest.id, actions = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"] }
+  }
+  name = "climate-store"
+  role = each.value.role
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "s3:ListBucket"
+        Resource = aws_s3_bucket.data.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = each.value.actions
+        Resource = "${aws_s3_bucket.data.arn}/climate.zarr/*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt", "kms:GenerateDataKey"]
+        Resource = aws_kms_key.main.arn
+      },
+    ]
+  })
+}
+
+resource "aws_iam_role" "flow_logs" {
+  name = "${var.project}-flow-logs"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "vpc-flow-logs.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+      Condition = { StringEquals = { "aws:SourceAccount" = local.account_id } }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "flow_logs" {
+  name = "write-flow-logs"
+  role = aws_iam_role.flow_logs.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogStreams"]
+      Resource = "${aws_cloudwatch_log_group.flow.arn}:*"
+    }]
+  })
+}
+
+resource "aws_iam_role" "rds_monitoring" {
+  name = "${var.project}-rds-monitoring"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "monitoring.rds.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "rds_monitoring" {
+  role       = aws_iam_role.rds_monitoring.name
+  policy_arn = "${local.arn_prefix}:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
+}
