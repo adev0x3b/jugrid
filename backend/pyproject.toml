@@ -38,6 +38,7 @@ dev = [
   "pandas-stubs>=2.3",
   "types-shapely>=2.1",
   "testcontainers[postgres]>=4.15",
+  "pytest-cov>=7.0",
 ]
 
 [build-system]
@@ -74,3 +75,13 @@ mypy_path = "src"
 [[tool.mypy.overrides]]
 module = ["rasterio.*", "s3fs.*", "geoalchemy2.*", "testcontainers.*", "h5netcdf.*", "zarr.*", "respx.*"]
 ignore_missing_imports = true
+
+[tool.coverage.run]
+branch = true
+source = ["jugrid"]
+omit = ["*/migrations/env.py"]  # runs inside Alembic, measured by the migration tests
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+skip_covered = true

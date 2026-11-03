@@ -34,7 +34,8 @@ jobs:
       - run: uv export --locked --no-dev --no-emit-project --format requirements-txt -o "$RUNNER_TEMP/requirements.txt"
       - run: uvx pip-audit@2.10.1 --strict --disable-pip -r "$RUNNER_TEMP/requirements.txt"
       # Integration tests start PostGIS with Testcontainers on the runner's Docker.
-      - run: uv run pytest
+      # Line and branch coverage below 90% fails the build.
+      - run: uv run pytest --cov --cov-report=term
 
   web:
     runs-on: ubuntu-latest

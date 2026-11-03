@@ -126,7 +126,7 @@ reputation, known-bad-input and core rule groups, a per-address rate limit set b
 # Pipeline and API (Python 3.14, uv); the integration tests start PostGIS with Docker
 cd backend
 uv sync
-uv run pytest
+uv run pytest --cov            # fails under 90% line and branch coverage
 uv run ruff check src tests && uv run mypy src tests
 
 # Web app (Node 26) with hot reload, against the composed API
