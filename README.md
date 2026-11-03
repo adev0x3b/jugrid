@@ -5,6 +5,14 @@ OpenStreetMap knows in a region, checks each one against heat, heavy rain, wind,
 river floods, today and in 2050 under two emission paths, and shows the result on a map.
 It ships set up for Piemonte; any ISO 3166-2 region works.
 
+![Piemonte's grid today, coloured by each asset's worst hazard](docs/screenshots/map-today.png)
+
+| Heat in 2050, high emissions, with the climate grid | One line across the three scenarios |
+|---|---|
+| ![Days above 35 °C in 2050 under SSP5-8.5, dark theme](docs/screenshots/map-2050-heat.png) | ![The Villeneuve-Villa line's hazards today and in 2050](docs/screenshots/asset.png) |
+| **Assets whose risk grows fastest by 2050** | **On a phone** |
+| ![Substations around Novara ranked by how much their risk grows](docs/screenshots/rising-fastest.png) | <img src="docs/screenshots/phone.png" alt="River flood exposure on a phone" width="49%"> <img src="docs/screenshots/phone-lists.png" alt="Hazards and asset lists on a phone, dark theme" width="49%"> |
+
 ## Features
 
 - Map of the grid coloured by overall risk or by one hazard, with the 25 km climate grid as an
@@ -133,6 +141,9 @@ cd web && npx playwright test
 ```
 
 The API's OpenAPI page is at http://127.0.0.1:8096/api/docs.
+
+The screenshots above come from the Screenshots workflow (run it from the Actions tab): it
+loads the real sources into the compose stack and runs `web/scripts/screenshots.ts`.
 
 ## Stack
 
