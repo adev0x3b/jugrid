@@ -13,6 +13,7 @@ import xarray as xr
 from sqlalchemy import text
 
 from jugrid import pipeline
+from jugrid.cli import ensure_bucket
 from jugrid.climate.store import ClimateStore, open_store
 from jugrid.config import Settings
 from jugrid.db import session_factory
@@ -71,6 +72,7 @@ grid = xr.Dataset(
     coords={"scenario": keys, "lat": lats, "lon": lons},
 ).astype("float32")
 
+ensure_bucket(settings)
 with session_factory(settings.database_url)() as session:
     session.execute(text("TRUNCATE assets, asset_risks, ingest_runs RESTART IDENTITY CASCADE"))
     pipeline.store_assets(session, list(overpass.parse(FIXTURE)))
