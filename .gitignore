@@ -1,0 +1,17 @@
+.env
+node_modules/
+dist/
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+backend/data/
+web/playwright-report/
+web/test-results/
+infra/.terraform/
+infra/*.tfstate*
+infra/backend.hcl
+infra/*.tfvars
+.proxy-ca.crt

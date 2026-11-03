@@ -1,0 +1,88 @@
+# Ships main to AWS once `infra/` has been applied and the repository variables set
+# (terraform output deploy_settings). Without AWS_DEPLOY_ROLE_ARN the job is skipped.
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      vars.AWS_DEPLOY_ROLE_ARN != '' &&
+      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # To assume the deploy role through GitHub's OIDC provider. No `environment:` here: it
+      # would change the token's subject and the role only trusts refs/heads/main.
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      IMAGE_TAG: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.IMAGE_TAG }}
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
+
+      - name: Build and push the API image
+        env:
+          IMAGE: ${{ steps.ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+        run: |
+          docker build -t "$IMAGE" backend
+          docker push "$IMAGE"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
+      - name: Point the API and the ingest at the new image
+        run: |
+          for family in "${{ vars.API_TASK_FAMILY }}" "${{ vars.INGEST_TASK_FAMILY }}"; do
+            aws ecs describe-task-definition --task-definition "$family" --query taskDefinition \
+              | jq --arg image "$IMAGE" '.containerDefinitions[0].image = $image
+                  | del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+                        .compatibilities, .registeredAt, .registeredBy)' > task.json
+            aws ecs register-task-definition --cli-input-json file://task.json \
+              --query taskDefinition.taskDefinitionArn --output text > "$family.arn"
+          done
+          aws ecs update-service --cluster "${{ vars.ECS_CLUSTER }}" --service "${{ vars.ECS_SERVICE }}" \
+            --task-definition "$(cat "${{ vars.API_TASK_FAMILY }}.arn")" > /dev/null
+          aws ecs wait services-stable --cluster "${{ vars.ECS_CLUSTER }}" --services "${{ vars.ECS_SERVICE }}"
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Publish the web app
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+          # Hashed assets forever, the page itself never: a deploy shows up on the next load.
+          aws s3 sync dist/assets "s3://${{ vars.WEB_BUCKET }}/assets" --delete \
+            --cache-control "public, max-age=31536000, immutable" --exclude "*.mjs"
+          aws s3 sync dist/assets "s3://${{ vars.WEB_BUCKET }}/assets" \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "*" --include "*.mjs" --content-type text/javascript
+          aws s3 sync dist "s3://${{ vars.WEB_BUCKET }}" --delete --exclude "assets/*" \
+            --cache-control "no-cache"
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" --paths "/index.html" "/" > /dev/null
