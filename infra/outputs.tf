@@ -30,3 +30,8 @@ output "run_ingest" {
     "--network-configuration 'awsvpcConfiguration={subnets=[${join(",", aws_subnet.private[*].id)}],securityGroups=[${aws_security_group.ingest.id}]}'",
   ])
 }
+
+output "alerts_topic_arn" {
+  description = "SNS topic the alarms and failed ingests publish to; subscribe chat or on-call here."
+  value       = aws_sns_topic.alerts.arn
+}

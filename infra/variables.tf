@@ -62,6 +62,28 @@ variable "api_desired_count" {
   default     = 1
 }
 
+variable "api_max_count" {
+  description = "Most API tasks autoscaling may run."
+  type        = number
+  default     = 4
+
+  validation {
+    condition     = var.api_max_count >= var.api_desired_count
+    error_message = "api_max_count must be at least api_desired_count."
+  }
+}
+
+variable "alert_email" {
+  description = "Address the alerts topic mails (AWS asks it to confirm). Empty: no mail subscription."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.alert_email == "" || can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", var.alert_email))
+    error_message = "Use an email address, or leave it empty."
+  }
+}
+
 variable "ingest_schedule" {
   description = "When the ingest runs again (EventBridge Scheduler expression). OpenStreetMap changes daily; the climate data does not."
   type        = string

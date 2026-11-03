@@ -144,9 +144,10 @@ resource "aws_ecs_service" "api" {
     rollback = true
   }
 
-  # Deploys from GitHub register new task definitions; Terraform does not roll them back.
+  # Deploys from GitHub register new task definitions, and autoscaling moves the count
+  # (monitoring.tf); Terraform rolls back neither.
   lifecycle {
-    ignore_changes = [task_definition]
+    ignore_changes = [task_definition, desired_count]
   }
 
   depends_on = [aws_lb_listener.http]

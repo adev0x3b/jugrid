@@ -53,6 +53,12 @@ mock_provider "aws" {
   mock_resource "aws_lb" {
     defaults = { arn = "arn:aws:elasticloadbalancing:eu-south-1:123456789012:loadbalancer/app/jugrid/test" }
   }
+  mock_resource "aws_sns_topic" {
+    defaults = { arn = "arn:aws:sns:eu-south-1:123456789012:jugrid-alerts" }
+  }
+  mock_resource "aws_cloudwatch_event_rule" {
+    defaults = { arn = "arn:aws:events:eu-south-1:123456789012:rule/jugrid-ingest-failed" }
+  }
   mock_resource "aws_lb_listener" {
     defaults = { arn = "arn:aws:elasticloadbalancing:eu-south-1:123456789012:listener/app/jugrid/test/test" }
   }
@@ -378,6 +384,98 @@ run "waf_guards_cloudfront_when_turned_on" {
     )
     error_message = "Only blocked requests are logged."
   }
+}
+
+run "alarms_and_failed_ingests_reach_the_alerts_topic" {
+  command = apply
+
+  assert {
+    condition     = toset(keys(aws_cloudwatch_metric_alarm.this)) == toset(["api-errors", "api-down", "api-slow", "db-cpu", "db-storage"])
+    error_message = "Errors, an API with no healthy task, slow answers, a busy database and a full disk raise alarms."
+  }
+
+  assert {
+    condition = alltrue([
+      for a in aws_cloudwatch_metric_alarm.this :
+      a.alarm_actions == toset([aws_sns_topic.alerts.arn]) && a.ok_actions == toset([aws_sns_topic.alerts.arn])
+    ])
+    error_message = "Every alarm tells the alerts topic when it fires and when it clears."
+  }
+
+  assert {
+    condition     = alltrue([for k, a in aws_cloudwatch_metric_alarm.this : strcontains(a.alarm_description, "docs/runbook.md#${k}")])
+    error_message = "Every alarm links its runbook entry."
+  }
+
+  assert {
+    condition     = aws_cloudwatch_metric_alarm.this["api-down"].treat_missing_data == "breaching"
+    error_message = "No data from the load balancer means no API: that alarms too."
+  }
+
+  assert {
+    condition     = aws_sns_topic.alerts.kms_master_key_id == aws_kms_key.main.id
+    error_message = "The alerts topic is encrypted with the project key."
+  }
+
+  assert {
+    condition     = length(aws_sns_topic_subscription.email) == 0
+    error_message = "No mail subscription without an address."
+  }
+
+  assert {
+    condition = jsondecode(aws_cloudwatch_event_rule.ingest_failed.event_pattern).detail.group == [
+      "family:${aws_ecs_task_definition.ingest.family}",
+    ]
+    error_message = "The failed-ingest rule watches the ingest task only."
+  }
+
+  assert {
+    condition     = aws_cloudwatch_event_target.ingest_failed.arn == aws_sns_topic.alerts.arn
+    error_message = "A failed ingest is published to the alerts topic."
+  }
+
+  assert {
+    condition = (
+      aws_appautoscaling_target.api.min_capacity == var.api_desired_count &&
+      aws_appautoscaling_target.api.max_capacity == var.api_max_count &&
+      aws_appautoscaling_policy.api_cpu.target_tracking_scaling_policy_configuration[0].target_value == 60
+    )
+    error_message = "The API scales on CPU between api_desired_count and api_max_count."
+  }
+}
+
+run "alerts_mail_the_address_given" {
+  command = plan
+
+  variables {
+    alert_email = "ops@example.com"
+  }
+
+  assert {
+    condition     = aws_sns_topic_subscription.email[0].endpoint == "ops@example.com" && aws_sns_topic_subscription.email[0].protocol == "email"
+    error_message = "With an address, the topic mails it."
+  }
+}
+
+run "an_alert_address_must_be_an_email" {
+  command = plan
+
+  variables {
+    alert_email = "not-an-address"
+  }
+
+  expect_failures = [var.alert_email]
+}
+
+run "autoscaling_cannot_cap_below_the_floor" {
+  command = plan
+
+  variables {
+    api_desired_count = 3
+    api_max_count     = 2
+  }
+
+  expect_failures = [var.api_max_count]
 }
 
 run "a_repository_must_be_owner_slash_name" {
