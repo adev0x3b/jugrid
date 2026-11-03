@@ -12,6 +12,8 @@ It ships set up for Piemonte; any ISO 3166-2 region works.
 | ![Days above 35 °C in 2050 under SSP5-8.5, dark theme](docs/screenshots/map-2050-heat.png) | ![The Villeneuve-Villa line's hazards today and in 2050](docs/screenshots/asset.png) |
 | **Assets whose risk grows fastest by 2050** | **On a phone** |
 | ![Substations around Novara ranked by how much their risk grows](docs/screenshots/rising-fastest.png) | <img src="docs/screenshots/phone.png" alt="River flood exposure on a phone" width="49%"> <img src="docs/screenshots/phone-lists.png" alt="Hazards and asset lists on a phone, dark theme" width="49%"> |
+| **The bias-correction model card** | **The same heat grid before correction** |
+| ![The model card: errors on unseen years and cells, raw and corrected](docs/screenshots/model-card.png) | ![Days above 35 °C in 2050 from the raw projections, dark theme](docs/screenshots/raw-grid.png) |
 
 ## Features
 

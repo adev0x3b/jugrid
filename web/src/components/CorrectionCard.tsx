@@ -63,9 +63,7 @@ export function CorrectionCard({ card }: { card: Correction }) {
               <tr key={key}>
                 <th scope="row" className={th}>
                   {VARIABLE_LABEL[key] ?? key}{" "}
-                  <span className="font-normal text-slate-600 dark:text-slate-400">
-                    ({v.transform === "ratio" ? "ratio" : v.unit})
-                  </span>
+                  <span className="font-normal text-slate-600 dark:text-slate-400">({v.unit})</span>
                 </th>
                 <td className="py-1 pr-2">{n(v.held_out_years.raw)}</td>
                 <td className="py-1 pr-2 font-semibold">{n(v.held_out_years.model)}</td>
@@ -118,7 +116,7 @@ export function CorrectionCard({ card }: { card: Correction }) {
       </div>
       <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
         Model {card.version}. Rainfall and wind are corrected by ratio, temperatures by difference;
-        the error of the ratio-corrected ones is in their own units (mm, m/s).
+        every error is in the variable's own unit.
       </p>
     </section>
   );
