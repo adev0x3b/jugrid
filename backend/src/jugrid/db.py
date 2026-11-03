@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from functools import cache
+from typing import Any
 
 from geoalchemy2 import Geometry, WKBElement
 from sqlalchemy import (
@@ -15,6 +16,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     create_engine,
+    event,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -85,10 +87,35 @@ class RunRow(Base):
     detail: Mapped[str | None] = mapped_column(Text)
 
 
+def rds_token(host: str, port: int, user: str, region: str) -> str:
+    """A 15-minute RDS sign-in token, signed with the task's IAM role. No network call."""
+    import botocore.session  # type: ignore[import-untyped]  # noqa: PLC0415 - only on AWS
+
+    client = botocore.session.get_session().create_client("rds", region_name=region)
+    token: str = client.generate_db_auth_token(host, port, user)
+    return token
+
+
 @cache
-def engine(url: str) -> Engine:
-    return create_engine(url, pool_pre_ping=True)
+def engine(url: str, *, read_only: bool = False, iam_region: str | None = None) -> Engine:
+    """One pool per database. With ``read_only`` Postgres refuses every write on it; with
+    ``iam_region`` each new connection signs in with a fresh IAM token."""
+    connect_args = {"options": "-c default_transaction_read_only=on"} if read_only else {}
+    made = create_engine(url, pool_pre_ping=True, connect_args=connect_args)
+    if iam_region:
+
+        @event.listens_for(made, "do_connect")
+        def _sign_in(_dialect: Any, _record: Any, _args: Any, params: dict[str, Any]) -> None:
+            params["password"] = rds_token(
+                made.url.host or "", made.url.port or 5432, made.url.username or "", iam_region
+            )
+
+    return made
 
 
-def session_factory(url: str) -> sessionmaker:  # type: ignore[type-arg]
-    return sessionmaker(engine(url), expire_on_commit=False)
+def session_factory(
+    url: str, *, read_only: bool = False, iam_region: str | None = None
+) -> sessionmaker:  # type: ignore[type-arg]
+    return sessionmaker(
+        engine(url, read_only=read_only, iam_region=iam_region), expire_on_commit=False
+    )

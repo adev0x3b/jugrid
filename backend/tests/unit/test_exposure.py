@@ -5,11 +5,11 @@ import pytest
 import rasterio
 import xarray as xr
 from rasterio.transform import from_origin
-from shapely.geometry import LineString, Point
+from shapely.geometry import LineString, MultiLineString, Point
 
 from jugrid.geo import BBox
 from jugrid.risk.exposure import GridSampler
-from jugrid.sources.jrcflood import FloodSampler, tile_url, tiles_for
+from jugrid.sources.jrcflood import FloodSampler, FloodSourceError, tile_url, tiles_for
 from tests.factories import LATS, LONS
 
 
@@ -77,6 +77,16 @@ class TestFloodSampler:
         assert depth == 2.0
         assert wet_km == pytest.approx(63.0 * 0.5, rel=0.05)
 
+    def test_a_multi_line_is_measured_part_by_part(self, tile: Path) -> None:
+        # Two dry spans in the north; joined end to start they would cut through the water.
+        line = MultiLineString(
+            [[(7.6, 45.9), (7.9, 45.9)], [(7.1, 45.1), (7.1, 45.0)]]  # the second in the water
+        )
+        with FloodSampler([tile]) as sampler:
+            depth, wet_km = sampler.exposure(line)
+        assert depth == 2.0
+        assert wet_km == pytest.approx(11.1, rel=0.05)  # the second part only
+
     def test_a_point_has_no_wet_kilometres(self, tile: Path) -> None:
         with FloodSampler([tile]) as sampler:
             assert sampler.exposure(Point(7.2, 45.2)) == (2.0, 0.0)
@@ -105,3 +115,20 @@ def test_tiles_overlapping_the_region_are_picked_by_id_and_name() -> None:
     assert tile_url("https://jrc", 100, "ID114_N50_W0") == (
         "https://jrc/RP100/ID114_N50_W0_RP100_depth.tif"
     )
+
+
+@pytest.mark.parametrize("name", ["../../etc/N50_W0", "N50_W0/../../x", "N50 W0"])
+def test_tile_names_that_are_not_tile_names_are_refused(name: str) -> None:
+    index = {
+        "features": [
+            {
+                "properties": {"id": 114, "name": name},
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[0, 40], [10, 40], [10, 50], [0, 50], [0, 40]]],
+                },
+            }
+        ]
+    }
+    with pytest.raises(FloodSourceError, match="unexpected tile name"):
+        tiles_for(index, BBox(6.62, 44.06, 9.22, 46.47))

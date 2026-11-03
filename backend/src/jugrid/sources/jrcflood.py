@@ -5,6 +5,7 @@ per return period. A pixel with no value is dry land in that flood.
 """
 
 import json
+import re
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,7 @@ from shapely.geometry.base import BaseGeometry
 from jugrid.geo import BBox, length_km
 
 SAMPLE_STEP_DEG = 0.0008  # about one pixel
+STEM = re.compile(r"ID\d{1,4}_[NS]\d{1,2}_[EW]\d{1,3}")
 
 
 class FloodSourceError(RuntimeError):
@@ -27,11 +29,16 @@ class FloodSourceError(RuntimeError):
 def tiles_for(index: dict[str, Any], bbox: BBox) -> list[str]:
     """File stems (``ID114_N50_W0``) of the tiles that overlap the box."""
     area = box(bbox.west, bbox.south, bbox.east, bbox.north)
-    return [
+    stems = [
         f"ID{feature['properties']['id']}_{feature['properties']['name']}"
         for feature in index["features"]
         if shape(feature["geometry"]).intersects(area)
     ]
+    # The stems become file names and URLs: refuse anything else from the downloaded index.
+    for stem in stems:
+        if not STEM.fullmatch(stem):
+            raise FloodSourceError(f"unexpected tile name in the index: {stem!r}")
+    return stems
 
 
 def tile_url(base_url: str, return_period: int, stem: str) -> str:
@@ -108,18 +115,19 @@ class FloodSampler:
         """The deepest water an asset meets and, for lines, the kilometres that run under it."""
         if geometry.geom_type == "Point":
             return self._depth(geometry.x, geometry.y), 0.0  # type: ignore[attr-defined]
-        line = (
-            geometry
-            if isinstance(geometry, LineString)
-            else LineString(
-                [c for part in geometry.geoms for c in part.coords]  # type: ignore[attr-defined]
-            )
+        # Each part of a multi-line on its own: joining them would add spans that do not exist.
+        parts: list[LineString] = (
+            [geometry] if isinstance(geometry, LineString) else list(geometry.geoms)  # type: ignore[attr-defined]
         )
-        steps = max(2, int(line.length / SAMPLE_STEP_DEG) + 1)
-        points = [line.interpolate(i / (steps - 1), normalized=True) for i in range(steps)]
-        values = self.depths((p.x, p.y) for p in points)
-        known = [v for v in values if v is not None]
-        if not known:
-            return None, 0.0
-        wet_share = sum(1 for v in known if v > 0) / len(values)
-        return max(known), round(length_km(line) * wet_share, 3)
+        deepest: float | None = None
+        wet_km = 0.0
+        for line in parts:
+            steps = max(2, int(line.length / SAMPLE_STEP_DEG) + 1)
+            points = [line.interpolate(i / (steps - 1), normalized=True) for i in range(steps)]
+            values = self.depths((p.x, p.y) for p in points)
+            known = [v for v in values if v is not None]
+            if not known:
+                continue
+            deepest = max([*known] if deepest is None else [deepest, *known])
+            wet_km += length_km(line) * sum(1 for v in known if v > 0) / len(values)
+        return deepest, round(wet_km, 3)

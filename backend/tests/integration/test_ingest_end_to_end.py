@@ -115,4 +115,4 @@ def test_a_failing_source_marks_the_step_failed(settings: Settings, session: Ses
     session.expire_all()
     failed = session.scalars(select(RunRow)).one()
     assert failed.status == "failed"
-    assert "504" in (failed.detail or "")
+    assert failed.detail == "OverpassError; see the ingest logs"

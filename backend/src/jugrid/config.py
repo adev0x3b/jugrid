@@ -21,11 +21,13 @@ class Settings(BaseSettings):
     db_name: str = "jugrid"
     db_user: str = "jugrid"
     db_password: SecretStr | None = None
+    # Sign in with a short-lived IAM token instead of a password (RDS only).
+    db_iam_auth: bool = False
 
     # Where the Zarr store lives: a local path, or s3://bucket/key.zarr
     store_url: str = "data/climate.zarr"
     s3_endpoint_url: str | None = None  # SeaweedFS in compose; unset on AWS
-    s3_region: str = "eu-south-1"
+    aws_region: str = "eu-south-1"
     cache_dir: Path = Path("data/cache")
 
     # The region: an ISO 3166-2 code for OpenStreetMap and a box for the climate grid.
@@ -47,12 +49,12 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _database_from_parts(self) -> Settings:
         if self.db_host:
-            password = quote(
-                self.db_password.get_secret_value() if self.db_password else "", safe=""
-            )
+            user = quote(self.db_user, safe="")
+            if not self.db_iam_auth and self.db_password:
+                user += ":" + quote(self.db_password.get_secret_value(), safe="")
             self.database_url = (
-                f"postgresql+psycopg://{quote(self.db_user, safe='')}:{password}@{self.db_host}:"
-                f"{self.db_port}/{self.db_name}?sslmode=require"
+                f"postgresql+psycopg://{user}@{self.db_host}:{self.db_port}/{self.db_name}"
+                "?sslmode=require"
             )
         return self
 
@@ -86,7 +88,7 @@ class Settings(BaseSettings):
     def storage_options(self) -> dict[str, object]:
         if not self.store_url.startswith("s3://"):
             return {}
-        options: dict[str, object] = {"client_kwargs": {"region_name": self.s3_region}}
+        options: dict[str, object] = {"client_kwargs": {"region_name": self.aws_region}}
         if self.s3_endpoint_url:
             options["endpoint_url"] = self.s3_endpoint_url
         return options

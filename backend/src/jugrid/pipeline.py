@@ -41,8 +41,10 @@ def recorded(session: Session, step: str) -> Iterator[RunRow]:
     try:
         yield run
     except BaseException as error:
+        # The run log is public (/api/meta): it names the kind of failure, the logs say the rest.
+        log.exception("ingest step %s failed", step)
         session.rollback()
-        run.status, run.detail = "failed", f"{type(error).__name__}: {error}"[:2000]
+        run.status, run.detail = "failed", f"{type(error).__name__}; see the ingest logs"
         run.finished_at = datetime.now(UTC)
         session.add(run)
         session.commit()

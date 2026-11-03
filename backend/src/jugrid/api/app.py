@@ -3,12 +3,12 @@
 import json
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Awaitable, Callable, Iterator
 from typing import Annotated, Any
 
 import numpy as np
 import xarray as xr
-from fastapi import Depends, FastAPI, HTTPException, Query, Response
+from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from sqlalchemy import text
@@ -59,6 +59,10 @@ SOURCES = [
 
 Kinds = Annotated[list[AssetKind] | None, Query(alias="kind")]
 
+# The data only changes when an ingest runs (monthly), so browsers and CloudFront may keep an
+# answer for a few minutes; that is also what absorbs a burst of requests.
+CACHE_CONTROL = "public, max-age=300"
+
 
 class IndicatorCache:
     """The indicators read from the Zarr store, kept for a minute between reads."""
@@ -79,7 +83,12 @@ class IndicatorCache:
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings()
-    make_session = session_factory(settings.database_url)
+    # The API only reads: Postgres refuses any write on its connections.
+    make_session = session_factory(
+        settings.database_url,
+        read_only=True,
+        iam_region=settings.aws_region if settings.db_iam_auth else None,
+    )
     indicators = IndicatorCache(
         ClimateStore(open_store(settings.store_url, settings.storage_options()))
     )
@@ -91,6 +100,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         redoc_url=None,
     )
     app.add_middleware(GZipMiddleware, minimum_size=2048)
+
+    @app.middleware("http")
+    async def cache_headers(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        response = await call_next(request)
+        if "cache-control" not in response.headers:
+            cacheable = request.method == "GET" and response.status_code in {200, 404}
+            response.headers["Cache-Control"] = CACHE_CONTROL if cacheable else "no-store"
+        return response
+
     if settings.cors_origins:
         app.add_middleware(
             CORSMiddleware, allow_origins=settings.cors_origins, allow_methods=["GET"]
@@ -106,8 +126,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return [k.value for k in (kinds or list(AssetKind))]
 
     @app.get("/api/health")
-    def health(db: Db) -> dict[str, str]:
+    def health(db: Db, response: Response) -> dict[str, str]:
         db.execute(text("SELECT 1"))
+        response.headers["Cache-Control"] = "no-store"
         return {"status": "ok"}
 
     @app.get("/api/meta")
@@ -157,7 +178,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return Response(body, media_type="application/geo+json")
 
     @app.get("/api/assets/{asset_id}")
-    def asset(asset_id: int, db: Db) -> AssetOut:
+    def asset(asset_id: Annotated[int, Path(ge=1, le=2**63 - 1)], db: Db) -> AssetOut:
         found = queries.asset_detail(db, asset_id)
         if found is None:
             raise HTTPException(404, "No asset with that id")
@@ -212,7 +233,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
 
 def _cells_geojson(layer: xr.DataArray, hazard: Hazard) -> str:
-
     lats, lons = layer["lat"].values, layer["lon"].values
     half_lat = float(np.abs(np.diff(lats)).min()) / 2 if lats.size > 1 else 0.125
     half_lon = float(np.abs(np.diff(lons)).min()) / 2 if lons.size > 1 else 0.125

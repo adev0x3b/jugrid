@@ -106,12 +106,14 @@ class TestRecorded:
         assert (row.status, row.detail) == ("done", "6 assets")
         assert row.finished_at is not None
 
-    def test_a_failed_step_keeps_the_error(self, session: Session) -> None:
+    def test_a_failed_step_names_the_error_but_keeps_its_text_out_of_the_public_log(
+        self, session: Session
+    ) -> None:
         with pytest.raises(RuntimeError), pipeline.recorded(session, "climate"):
-            raise RuntimeError("archive down")
+            raise RuntimeError("could not reach db.internal:5432 as jugrid")
         row = session.scalars(select(RunRow)).one()
         assert row.status == "failed"
-        assert row.detail == "RuntimeError: archive down"
+        assert row.detail == "RuntimeError; see the ingest logs"
 
 
 def test_the_schema_refuses_unknown_kinds(session: Session) -> None:

@@ -10,6 +10,15 @@ def test_the_database_url_is_built_from_parts_with_the_password_escaped() -> Non
     )
 
 
+def test_with_iam_sign_in_the_url_carries_no_password() -> None:
+    settings = Settings(
+        db_host="db.internal", db_user="jugrid_api", db_password="ignored", db_iam_auth=True
+    )
+    assert settings.database_url == (
+        "postgresql+psycopg://jugrid_api@db.internal:5432/jugrid?sslmode=require"
+    )
+
+
 def test_without_a_host_the_url_is_used_as_given() -> None:
     url = "postgresql+psycopg://a:b@127.0.0.1:5432/c"
     assert Settings(database_url=url).database_url == url

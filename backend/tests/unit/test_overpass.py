@@ -29,7 +29,18 @@ def test_query_refuses_anything_that_is_not_a_code(code: str) -> None:
 
 @pytest.mark.parametrize(
     ("raw", "kv"),
-    [("132000", 132), ("380000;132000", 380), ("15000; 400", 15), ("unknown", None), (None, None)],
+    [
+        ("132000", 132),
+        ("380000;132000", 380),
+        ("15000; 400", 15),
+        ("unknown", None),
+        (None, None),
+        # Values JSON cannot carry or that make no sense are dropped, not stored.
+        ("nan", None),
+        ("inf;132000", 132),
+        ("-1", None),
+        ("0", None),
+    ],
 )
 def test_voltage_is_the_highest_one_in_kv(raw: str | None, kv: float | None) -> None:
     assert overpass.parse_voltage_kv(raw) == kv

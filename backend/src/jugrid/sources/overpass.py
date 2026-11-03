@@ -1,5 +1,6 @@
 """Power assets from OpenStreetMap through the Overpass API."""
 
+import math
 import re
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
@@ -55,9 +56,11 @@ def parse_voltage_kv(raw: str | None) -> float | None:
     volts = []
     for part in raw.split(";"):
         try:
-            volts.append(float(part.strip()))
+            value = float(part.strip())
         except ValueError:
             continue
+        if math.isfinite(value) and value > 0:  # "nan", "inf" and "-1" are tagging mistakes
+            volts.append(value)
     return max(volts) / 1000 if volts else None
 
 

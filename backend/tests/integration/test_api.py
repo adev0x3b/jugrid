@@ -4,8 +4,12 @@ import io
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
+from jugrid import db
+from jugrid.config import Settings
 from tests.integration.conftest import asset_id
 
 pytestmark = pytest.mark.integration
@@ -83,6 +87,12 @@ class TestAssetDetail:
     def test_an_unknown_id_is_404(self, client: TestClient) -> None:
         assert client.get("/api/assets/999999").status_code == 404
 
+    @pytest.mark.parametrize("asset", ["0", "-1", str(2**63), "1e3"])
+    def test_ids_the_database_cannot_hold_are_422_not_500(
+        self, client: TestClient, asset: str
+    ) -> None:
+        assert client.get(f"/api/assets/{asset}").status_code == 422
+
 
 def test_summary_counts_assets_per_kind_and_level(client: TestClient) -> None:
     rows = {r["kind"]: r for r in client.get("/api/summary").json()}
@@ -148,3 +158,41 @@ class TestExport:
 
 def test_openapi_is_served(client: TestClient) -> None:
     assert client.get("/api/openapi.json").json()["info"]["title"] == "JuGrid API"
+
+
+class TestCaching:
+    @pytest.mark.parametrize(
+        "path", ["/api/meta", "/api/assets", "/api/summary", "/api/ranking", "/api/grid/heat"]
+    )
+    def test_data_may_be_kept_for_a_few_minutes(self, client: TestClient, path: str) -> None:
+        assert client.get(path).headers["cache-control"] == "public, max-age=300"
+
+    def test_health_and_errors_are_never_kept(self, client: TestClient) -> None:
+        assert client.get("/api/health").headers["cache-control"] == "no-store"
+        assert client.get("/api/ranking?limit=0").headers["cache-control"] == "no-store"
+
+
+class TestTheApiOnlyReads:
+    def test_its_connections_refuse_writes(self, scored: Settings) -> None:
+        engine = db.engine(scored.database_url, read_only=True)
+        with engine.connect() as conn, pytest.raises(DBAPIError, match="read-only transaction"):
+            conn.execute(text("DELETE FROM assets"))
+
+    def test_on_rds_it_signs_in_with_a_token_as_a_role_that_can_only_read(
+        self, scored: Settings, session: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Stand in for RDS: give the role a password and have the token be that password.
+        session.execute(text("ALTER ROLE jugrid_api PASSWORD 'token-123'"))
+        session.commit()
+        monkeypatch.setattr(db, "rds_token", lambda host, port, user, region: "token-123")
+        url = make_url(scored.database_url).set(username="jugrid_api", password=None)
+        engine = db.engine(url.render_as_string(hide_password=False), iam_region="eu-south-1")
+        try:
+            with engine.connect() as conn:
+                assert conn.execute(text("SELECT count(*) FROM assets")).scalar_one() == 6
+                with pytest.raises(DBAPIError, match="permission denied"):
+                    conn.execute(text("DELETE FROM assets"))
+        finally:
+            engine.dispose()
+            session.execute(text("ALTER ROLE jugrid_api PASSWORD NULL"))
+            session.commit()

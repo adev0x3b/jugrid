@@ -817,6 +817,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
+    { name = "botocore" },
     { name = "fastapi" },
     { name = "geoalchemy2" },
     { name = "h5netcdf" },
@@ -850,6 +851,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = ">=1.20" },
+    { name = "botocore", specifier = ">=1.43" },
     { name = "fastapi", specifier = ">=0.162" },
     { name = "geoalchemy2", specifier = ">=0.20" },
     { name = "h5netcdf", specifier = ">=1.8" },
