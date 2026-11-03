@@ -5,6 +5,7 @@ import logging
 import threading
 import time
 from collections.abc import Awaitable, Callable, Iterator
+from enum import StrEnum
 from typing import Annotated, Any
 
 import numpy as np
@@ -19,6 +20,7 @@ from jugrid import logs
 from jugrid.api import queries
 from jugrid.api.schemas import (
     AssetOut,
+    CorrectionOut,
     HazardOut,
     KindSummary,
     Meta,
@@ -58,8 +60,22 @@ SOURCES = [
         license="ODbL 1.0",
     ),
 ]
+# Listed only when the scored indicators went through the bias correction trained on it.
+OBSERVATIONS = SourceOut(
+    name="E-OBS v32.0e, Copernicus Climate Change Service / ECA&D (observed daily weather)",
+    url="https://surfobs.climate.copernicus.eu/dataaccess/access_eobs.php",
+    license="E-OBS data policy, cite Cornes et al. 2018",
+)
 
 Kinds = Annotated[list[AssetKind] | None, Query(alias="kind")]
+
+
+class Correction(StrEnum):
+    """Which climate grid: the bias-corrected one the scores use, or the raw projections."""
+
+    CORRECTED = "corrected"
+    RAW = "raw"
+
 
 # The data only changes when an ingest runs (monthly), so browsers and CloudFront may keep an
 # answer for a few minutes; that is also what absorbs a burst of requests.
@@ -73,16 +89,22 @@ class IndicatorCache:
 
     def __init__(self, store: ClimateStore, ttl_s: float = 60.0) -> None:
         self._store, self._ttl = store, ttl_s
-        self._value: xr.Dataset | None = None
-        self._read_at = -1e9
+        self._values: dict[bool, tuple[float, xr.Dataset | None]] = {}
         self._lock = threading.Lock()
 
-    def get(self) -> xr.Dataset | None:
+    def get(self, *, raw: bool = False) -> xr.Dataset | None:
         with self._lock:
-            if time.monotonic() - self._read_at > self._ttl:
-                self._value = self._store.read_indicators()
-                self._read_at = time.monotonic()
-            return self._value
+            read_at, value = self._values.get(raw, (-1e9, None))
+            if time.monotonic() - read_at > self._ttl:
+                value = self._store.read_indicators(raw=raw)
+                self._values[raw] = (time.monotonic(), value)
+            return value
+
+    def correction(self) -> CorrectionOut | None:
+        """The model card of the correction the scored indicators went through, if any."""
+        data = self.get()
+        card = data.attrs.get("correction_card") if data is not None else None
+        return CorrectionOut.model_validate_json(card) if card else None
 
 
 async def request_log(
@@ -175,6 +197,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/meta")
     def meta(db: Db) -> Meta:
         bbox = settings.bbox
+        correction = indicators.correction()
         return Meta(
             region=settings.region_name,
             bbox=(bbox.west, bbox.south, bbox.east, bbox.north),
@@ -200,8 +223,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 k.value: {h.value: w for h, w in weights.items()}
                 for k, weights in VULNERABILITY.items()
             },
-            sources=SOURCES,
+            sources=[*SOURCES, OBSERVATIONS] if correction else SOURCES,
             runs=[RunOut(**r) for r in queries.last_runs(db)],
+            correction=correction,
         )
 
     @app.get(
@@ -251,10 +275,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response_class=Response,
         responses={200: {"content": {"application/geo+json": {}}}},
     )
-    def grid(hazard: Hazard, scenario: ScenarioKey = ScenarioKey.BASELINE) -> Response:
+    def grid(
+        hazard: Hazard,
+        scenario: ScenarioKey = ScenarioKey.BASELINE,
+        correction: Correction = Correction.CORRECTED,
+    ) -> Response:
         if hazard not in INDICATOR_OF:
             raise HTTPException(404, "This hazard has no climate grid")
-        data = indicators.get()
+        # Without a bias correction, the scored indicators are the raw ones.
+        data = indicators.get(raw=True) if correction is Correction.RAW else None
+        if data is None:
+            data = indicators.get()
         if data is None or scenario.value not in data["scenario"].values:
             raise HTTPException(404, "No climate data yet: run the ingest first")
         layer = data[INDICATOR_OF[hazard]].sel(scenario=scenario.value)

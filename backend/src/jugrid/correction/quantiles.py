@@ -28,6 +28,8 @@ MULTIPLICATIVE = {"pr", "sfcWind"}
 # Added before taking a ratio, so a dry day does not divide by zero.
 _EPS = {"pr": 0.1, "sfcWind": 0.1}
 _MAX_LOG_RATIO = 3.0
+# Degrees: two cell centres closer than this are the same cell.
+GRID_TOLERANCE = 0.01
 
 
 def delta(model: npt.ArrayLike, observed: npt.ArrayLike, variable: str) -> Array:
@@ -104,14 +106,25 @@ def _monthly_quantiles(data: xr.DataArray) -> xr.DataArray:
         )
 
 
-def _on_grid(observed: xr.DataArray, model: xr.DataArray) -> xr.DataArray:
-    return observed.reindex(lat=model["lat"], lon=model["lon"], method="nearest", tolerance=0.01)
+def _matches(observed: xr.DataArray, model: xr.DataArray, axis: str) -> bool:
+    gaps = np.abs(observed[axis].values[None, :] - model[axis].values[:, None]).min(axis=1)
+    return bool((gaps <= GRID_TOLERANCE).all())
+
+
+def on_grid(observed: xr.DataArray, model: xr.DataArray) -> xr.DataArray:
+    """The observations at the model's cells: the same cells when both grids agree, otherwise
+    interpolated (E-OBS wind sits on a grid shifted 0.1 degrees from its temperature and rain)."""
+    if _matches(observed, model, "lat") and _matches(observed, model, "lon"):
+        return observed.reindex(
+            lat=model["lat"], lon=model["lon"], method="nearest", tolerance=GRID_TOLERANCE
+        )
+    return observed.interp(lat=model["lat"], lon=model["lon"], method="linear")
 
 
 def delta_cube(model: xr.DataArray, observed: xr.DataArray, variable: str) -> xr.DataArray:
     """The empirical correction per (month, quantile, lat, lon)."""
     mq = _monthly_quantiles(model)
-    oq = _monthly_quantiles(_on_grid(observed, model))
+    oq = _monthly_quantiles(on_grid(observed, model))
     return xr.DataArray(delta(mq.values, oq.values, variable), dims=mq.dims, coords=mq.coords)
 
 
@@ -128,7 +141,7 @@ class Table:
 
 def training_table(model: xr.DataArray, observed: xr.DataArray, variable: str) -> Table:
     mq = _monthly_quantiles(model)
-    oq = _monthly_quantiles(_on_grid(observed, model))
+    oq = _monthly_quantiles(on_grid(observed, model))
     m, q, la, lo = np.meshgrid(
         mq["month"].values,
         mq["quantile"].values,

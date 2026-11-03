@@ -1,6 +1,7 @@
 """``jugrid``: migrate the database and run the ingest steps."""
 
 import argparse
+import logging
 import sys
 import tempfile
 from collections.abc import Sequence
@@ -13,10 +14,30 @@ from jugrid import logs, pipeline
 from jugrid.climate import ingest
 from jugrid.climate.store import ClimateStore, open_store
 from jugrid.config import Settings
+from jugrid.correction.model import MODEL_DIR, BiasCorrection
 from jugrid.db import session_factory
 from jugrid.sources import http, jrcflood, overpass
 
 STEPS = ("assets", "climate", "score")
+
+log = logging.getLogger(__name__)
+
+
+def load_correction(settings: Settings, directory: Path = MODEL_DIR) -> BiasCorrection | None:
+    """The shipped bias-correction model, when it was trained for this region and model."""
+    if not settings.bias_correction:
+        return None
+    correction = BiasCorrection.load(directory)
+    if correction is None:
+        return None
+    if not correction.covers(settings.bbox, settings.climate_model):
+        log.warning(
+            "bias correction %s was trained for another region or climate model: "
+            "scoring the raw projections",
+            correction.version,
+        )
+        return None
+    return correction
 
 
 def migrate(settings: Settings) -> None:
@@ -68,10 +89,18 @@ def run(settings: Settings, steps: Sequence[str]) -> None:
                     written = ingest.fill(
                         store, settings.scenarios, fetch, workers=settings.download_workers
                     )
-                result = ingest.compute(store, settings.scenarios, settings.climate_model)
+                correction = load_correction(settings)
+                result = ingest.compute(
+                    store, settings.scenarios, settings.climate_model, correction
+                )
                 record.detail = (
                     f"{written} new variable-years; indicators on "
-                    f"{result.sizes['lat']}x{result.sizes['lon']} cells"
+                    f"{result.sizes['lat']}x{result.sizes['lon']} cells, "
+                    + (
+                        f"bias-corrected (model {correction.version})"
+                        if correction
+                        else "not bias-corrected"
+                    )
                 )
         if "score" in steps:
             with make_session() as session, pipeline.recorded(session, "score") as record:

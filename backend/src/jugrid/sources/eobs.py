@@ -34,7 +34,9 @@ def path(variable: str, version: str = VERSION) -> str:
 def cut(dataset: xr.Dataset, variable: str, year: int, bbox: BBox) -> xr.DataArray:
     """One year of the region's cells, named and laid out like the model's (time, lat, lon)."""
     data = dataset[OBSERVED[variable]].rename(latitude="lat", longitude="lon")
-    margin = 0.125
+    # A cell and a half: E-OBS wind sits on a grid shifted 0.1 degrees from the others, and
+    # interpolating it onto the model's edge cells needs the cells beyond them.
+    margin = 0.375
     region = data.sel(
         time=slice(f"{year}-01-01", f"{year}-12-31"),
         lat=slice(bbox.south - margin, bbox.north + margin),

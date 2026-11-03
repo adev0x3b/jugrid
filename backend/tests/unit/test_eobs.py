@@ -26,8 +26,8 @@ class TestCut:
         assert out.name == "tasmax"
         assert out.dims == ("time", "lat", "lon")
         assert out.sizes["time"] == 366
-        assert float(out["lat"].min()) >= BBOX.south - 0.125
-        assert float(out["lon"].max()) <= BBOX.east + 0.125
+        assert float(out["lat"].min()) >= BBOX.south - 0.375
+        assert float(out["lon"].max()) <= BBOX.east + 0.375
         assert out.dtype == np.float32
 
     def test_reads_the_matching_e_obs_variable(self) -> None:

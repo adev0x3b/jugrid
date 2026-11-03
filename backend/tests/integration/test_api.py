@@ -1,5 +1,6 @@
 import csv
 import io
+import json
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,6 +10,8 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from jugrid import db
+from jugrid.api.app import create_app
+from jugrid.climate.store import ClimateStore, open_store
 from jugrid.config import Settings
 from tests.integration.conftest import asset_id
 
@@ -235,3 +238,72 @@ class TestRequestLogs:
         caplog.set_level("INFO", logger="jugrid.api")
         client.get("/api/health")
         assert not [r for r in caplog.records if r.name == "jugrid.api"]
+
+
+CARD = {
+    "version": "2026-11-03-test",
+    "method": "Quantile delta mapping learnt by gradient boosting, per cell and month",
+    "climate_model": "EC-Earth3",
+    "reference": "E-OBS v32.0e ensemble mean",
+    "bbox": [6.62, 44.06, 9.22, 46.47],
+    "trained_on": [1995, 2014],
+    "held_out_from": 2010,
+    "features": ["quantile", "season_sin", "season_cos", "lat", "lon"],
+    "variables": {
+        "tasmax": {
+            "transform": "difference",
+            "unit": "°C",
+            "held_out_years": {"raw": 1.2, "empirical": 0.5, "model": 0.4},
+            "held_out_cells": {"raw": 1.3, "model": 0.6},
+            "rows": 100,
+        }
+    },
+    "indicators": {
+        "hot_days": {
+            "observed_mean": 2.0,
+            "raw_mean": 0.4,
+            "model_mean": 1.8,
+            "raw_error": 1.6,
+            "model_error": 0.5,
+        }
+    },
+}
+
+
+class TestBiasCorrection:
+    def test_without_a_correction_there_is_no_model_card(self, client: TestClient) -> None:
+        meta = client.get("/api/meta").json()
+        assert meta["correction"] is None
+        assert not any("E-OBS" in s["name"] for s in meta["sources"])
+
+    def test_asking_for_the_raw_grid_without_a_correction_serves_the_scored_one(
+        self, client: TestClient
+    ) -> None:
+        raw = client.get("/api/grid/heat", params={"correction": "raw"}).json()
+        scored = client.get("/api/grid/heat").json()
+        assert raw == scored
+
+    def test_with_a_correction_the_card_and_both_grids_are_served(self, scored: Settings) -> None:
+        store = ClimateStore(open_store(scored.store_url))
+        corrected = store.read_indicators()
+        assert corrected is not None
+        raw = corrected.copy()
+        raw["hot_days"] = raw["hot_days"] * 0 + 1.0
+        raw.attrs["correction"] = "none"
+        store.write_indicators(raw, raw=True)
+        corrected.attrs.update(correction=CARD["version"], correction_card=json.dumps(CARD))
+        store.write_indicators(corrected)
+        with TestClient(create_app(scored)) as client:
+            meta = client.get("/api/meta").json()
+            assert any("E-OBS" in s["name"] for s in meta["sources"])
+            card = meta["correction"]
+            assert card["reference"] == "E-OBS v32.0e ensemble mean"
+            assert card["variables"]["tasmax"]["held_out_years"]["model"] == 0.4
+            assert card["indicators"]["hot_days"]["model_error"] == 0.5
+            raw_cells = client.get("/api/grid/heat", params={"correction": "raw"}).json()
+            assert {f["properties"]["value"] for f in raw_cells["features"]} == {1.0}
+            scored_cells = client.get("/api/grid/heat").json()
+            assert scored_cells != raw_cells
+
+    def test_an_unknown_correction_is_refused(self, client: TestClient) -> None:
+        assert client.get("/api/grid/heat", params={"correction": "magic"}).status_code == 422

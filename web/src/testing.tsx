@@ -76,6 +76,33 @@ export const META: Meta = {
     },
   ],
   runs: [],
+  correction: null,
+};
+
+export const CORRECTION: NonNullable<Meta["correction"]> = {
+  version: "2026-11-03-abc1234",
+  method: "Quantile delta mapping learnt by gradient boosting, per cell and month",
+  climate_model: "EC-Earth3",
+  reference: "E-OBS v32.0e ensemble mean",
+  trained_on: [1995, 2014],
+  held_out_from: 2010,
+  variables: {
+    tasmax: {
+      transform: "difference",
+      unit: "°C",
+      held_out_years: { raw: 1.59, empirical: 1.15, model: 1.15 },
+      held_out_cells: { raw: 1.33, model: 0.57 },
+    },
+  },
+  indicators: {
+    hot_days: {
+      observed_mean: 2.1,
+      raw_mean: 0.4,
+      model_mean: 1.9,
+      raw_error: 1.7,
+      model_error: 0.6,
+    },
+  },
 };
 
 /** Answers fetch() from a table of path prefixes; the first match wins. */

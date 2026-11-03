@@ -40,9 +40,10 @@ export function App() {
   });
   const gridHazard: HazardKey | null =
     state.grid && state.view !== "overall" && state.view !== "flood" ? state.view : null;
+  const gridSource = state.raw ? "raw" : "corrected";
   const grid = useQuery({
-    queryKey: ["grid", gridHazard, state.scenario],
-    queryFn: () => api.grid(gridHazard!, state.scenario),
+    queryKey: ["grid", gridHazard, state.scenario, gridSource],
+    queryFn: () => api.grid(gridHazard!, state.scenario, gridSource),
     enabled: gridHazard !== null,
   });
   const selected = useQuery({
@@ -89,6 +90,28 @@ export function App() {
           />
           Show the climate grid
         </label>
+      )}
+      {climateView && state.grid && m.correction && (
+        <fieldset className="-mt-3 flex flex-wrap gap-x-4 gap-y-1 pl-6 text-sm">
+          <legend className="sr-only">Climate grid source</legend>
+          {(
+            [
+              [false, "Bias-corrected"],
+              [true, "Raw projections"],
+            ] as const
+          ).map(([raw, label]) => (
+            <label key={label} className="flex items-center gap-1.5">
+              <input
+                type="radio"
+                name="grid-source"
+                checked={state.raw === raw}
+                onChange={() => update({ raw })}
+                className="size-4 accent-slate-900 dark:accent-amber-400"
+              />
+              {label}
+            </label>
+          ))}
+        </fieldset>
       )}
       {summary.data && <Summary rows={summary.data} kinds={state.kinds} onToggle={toggleKind} />}
       <Ranking

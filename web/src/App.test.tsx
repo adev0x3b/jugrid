@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import type { KindSummary, RankedAsset } from "./api";
-import { META, mockApi, renderWithQuery } from "./testing";
+import { CORRECTION, META, mockApi, renderWithQuery } from "./testing";
 
 vi.mock("./components/MapView", () => ({
   MapView: ({ onSelect }: { onSelect: (id: number) => void }) => (
@@ -119,6 +119,39 @@ describe("App", () => {
     expect(await screen.findByText(/No assets yet/)).toHaveTextContent(
       "docker compose run --rm ingest",
     );
+  });
+
+  it("shows the climate grid bias-corrected or raw, when a correction applies", async () => {
+    const fetchMock = api({ "/api/meta": { ...META, correction: CORRECTION } });
+    window.history.replaceState(null, "", "/?view=heat&grid=1");
+    renderWithQuery(<App />);
+    const lists = await screen.findByRole("complementary", { name: "Map controls and lists" });
+    const source = within(lists).getByRole("group", { name: "Climate grid source" });
+    expect(within(source).getByRole("radio", { name: "Bias-corrected" })).toBeChecked();
+    await userEvent.click(within(source).getByRole("radio", { name: "Raw projections" }));
+    expect(window.location.search).toBe("?view=heat&grid=1&raw=1");
+    const urls = fetchMock.mock.calls.map(([url]) => String(url));
+    expect(urls).toContain("/api/grid/heat?scenario=baseline&correction=raw");
+  });
+
+  it("offers no grid source without a correction", async () => {
+    api();
+    window.history.replaceState(null, "", "/?view=heat&grid=1");
+    renderWithQuery(<App />);
+    const lists = await screen.findByRole("complementary", { name: "Map controls and lists" });
+    expect(within(lists).queryByRole("group", { name: "Climate grid source" })).toBeNull();
+  });
+
+  it("explains the bias correction and how well it does in About the data", async () => {
+    api({ "/api/meta": { ...META, correction: CORRECTION } });
+    renderWithQuery(<App />);
+    await userEvent.click(await screen.findByRole("button", { name: "About the data" }));
+    const card = screen.getByRole("region", { name: "Bias correction" });
+    expect(card).toHaveTextContent("E-OBS v32.0e ensemble mean, 1995–2014");
+    const row = within(card).getByRole("row", { name: /Daily maximum temperature/ });
+    expect(row).toHaveTextContent("1.59");
+    expect(row).toHaveTextContent("0.57");
+    expect(within(card).getByRole("row", { name: /Days above 35 °C/ })).toHaveTextContent("1.9");
   });
 
   it("says so when the API is down", async () => {

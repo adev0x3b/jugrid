@@ -18,13 +18,17 @@ from jugrid.sources.nexgddp import VARIABLES
 BBOX = BBox(west=7.0, south=45.0, east=7.5, north=45.5)
 YEARS = range(2000, 2004)
 LAT, LON = [45.125, 45.375, 45.625], [7.125, 7.375, 7.625]
+# Like E-OBS, the observed wind sits on a grid shifted 0.1 degrees east of the others.
+WIND_LON = [7.025, 7.275, 7.525, 7.775]
 LOC = {"tasmax": 22.0, "tas": 12.0, "pr": 3.0, "sfcWind": 3.0}
 
 
-def year_of(variable: str, year: int, seed: int, biased: bool) -> xr.DataArray:
+def year_of(
+    variable: str, year: int, seed: int, biased: bool, lon: list[float] = LON
+) -> xr.DataArray:
     rng = np.random.default_rng(seed)
     time = pd.date_range(f"{year}-01-01", f"{year}-12-31", freq="D")
-    shape = (len(time), len(LAT), len(LON))
+    shape = (len(time), len(LAT), len(lon))
     if variable in {"pr", "sfcWind"}:
         values = rng.gamma(1.2, LOC[variable], shape) * (0.6 if biased else 1.0)
     else:
@@ -33,7 +37,7 @@ def year_of(variable: str, year: int, seed: int, biased: bool) -> xr.DataArray:
     return xr.DataArray(
         values.astype("float32"),
         dims=("time", "lat", "lon"),
-        coords={"time": time, "lat": LAT, "lon": LON},
+        coords={"time": time, "lat": LAT, "lon": lon},
         name=variable,
     )
 
@@ -47,8 +51,9 @@ def trained(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, dict[str, A
             store.write_year(
                 "baseline", variable, year, year_of(variable, year, i * 100 + year, True)
             )
+            lon = WIND_LON if variable == "sfcWind" else LON
             store.write_year(
-                "observed", variable, year, year_of(variable, year, i * 7 + year, False)
+                "observed", variable, year, year_of(variable, year, i * 7 + year, False, lon)
             )
     out = root / "model"
     train.main(
@@ -112,6 +117,8 @@ def test_indicators_are_compared_with_what_was_observed(
         "windiest_day",
         "wet_snow_days",
     }
+    for name, scores in card["indicators"].items():
+        assert all(np.isfinite(v) for v in scores.values()), name
 
 
 def test_the_onnx_model_corrects_like_the_one_trained(
@@ -139,3 +146,18 @@ def test_covers_only_the_region_and_model_it_was_trained_for(
 
 def test_no_card_means_no_correction(tmp_path: Path) -> None:
     assert BiasCorrection.load(tmp_path) is None
+
+
+def test_fills_only_the_observed_years_the_store_lacks(tmp_path: Path) -> None:
+    store = ClimateStore(open_store(str(tmp_path / "climate.zarr")))
+    store.write_year("observed", "tasmax", 2000, year_of("tasmax", 2000, 1, False))
+    asked: list[tuple[str, int]] = []
+
+    def read(variable: str, year: int) -> xr.DataArray:
+        asked.append((variable, year))
+        return year_of(variable, year, 2, False)
+
+    written = train.fill_observed(store, range(2000, 2002), read)
+    assert written == len(VARIABLES) * 2 - 1
+    assert ("tasmax", 2000) not in asked
+    assert store.has_year("observed", "sfcWind", 2001)

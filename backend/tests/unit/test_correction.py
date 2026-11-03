@@ -92,6 +92,20 @@ class TestTrainingTable:
         assert set(table.cell) == {0}
         assert not np.isnan(table.x).any()
 
+    def test_observations_on_a_shifted_grid_are_interpolated_onto_the_model_cells(
+        self,
+    ) -> None:
+        model = cube(noise(seed=1))
+        time = model["time"]
+        shifted = xr.DataArray(
+            np.full((len(time), 3, 3), 23.0, dtype="float32"),
+            dims=("time", "lat", "lon"),
+            coords={"time": time, "lat": [44.9, 45.25, 45.6], "lon": [6.9, 7.2, 7.5]},
+        )
+        table = qm.training_table(model, shifted, "tasmax")
+        assert table.x.shape[0] == 2 * 12 * len(qm.QUANTILES)
+        assert np.allclose(table.observed, 23.0)
+
 
 class TestEmpiricalMapping:
     def test_moves_the_model_distribution_onto_the_observed_one(self) -> None:

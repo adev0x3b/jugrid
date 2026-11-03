@@ -15,7 +15,8 @@ import argparse
 import json
 import logging
 import subprocess
-from collections.abc import Iterator, Sequence
+import tempfile
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -32,17 +33,54 @@ from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.model_selection import GroupKFold
 
 from jugrid import logs
-from jugrid.climate import indicators
+from jugrid.climate import indicators, ingest
 from jugrid.climate.store import ClimateStore, open_store
+from jugrid.config import Settings
 from jugrid.correction import quantiles as qm
 from jugrid.correction.model import MODEL_DIR, BiasCorrection
 from jugrid.geo import BBox
-from jugrid.sources import eobs
+from jugrid.risk.hazards import Scenario
+from jugrid.sources import eobs, http
 from jugrid.sources.nexgddp import VARIABLES
 
 log = logging.getLogger(__name__)
 
 CLIMATE_MODEL = "EC-Earth3"
+
+
+def fill_observed(
+    store: ClimateStore, years: range, read: Callable[[str, int], xr.DataArray]
+) -> int:
+    """Write every observed year the store lacks (``daily/observed``). Returns how many."""
+    written = 0
+    for variable in VARIABLES:
+        for year in years:
+            if not store.has_year("observed", variable, year):
+                store.write_year("observed", variable, year, read(variable, year))
+                log.info("observed %s %d", variable, year)
+                written += 1
+    return written
+
+
+def fetch_inputs(store: ClimateStore, bbox: BBox, years: range, workers: int) -> None:
+    """Download what training needs and the store lacks: the model's historical run and E-OBS."""
+    settings = Settings()
+    baseline = Scenario("baseline", "Today", "historical", years.start, years.stop - 1)
+    with http.client() as client, tempfile.TemporaryDirectory() as workdir:
+        fetch = ingest.nexgddp_fetcher(
+            client,
+            settings.nexgddp_url,
+            CLIMATE_MODEL,
+            settings.climate_member,
+            bbox,
+            Path(workdir),
+        )
+        ingest.fill(store, [baseline], fetch, workers=workers)
+    reader = eobs.Reader(bbox)
+    try:
+        fill_observed(store, years, reader.year)
+    finally:
+        reader.close()
 
 
 def regressor(max_iter: int) -> HistGradientBoostingRegressor:
@@ -156,10 +194,7 @@ def indicator_scores(
         }
 
     grid = model["tasmax"]
-    obs = {
-        k: v.reindex(lat=grid.lat, lon=grid.lon, method="nearest", tolerance=0.01)
-        for k, v in observed.items()
-    }
+    obs = {k: qm.on_grid(v, grid) for k, v in observed.items()}
     raw, fixed, truth = all_of(model), all_of(corrected), all_of(obs)
     out: dict[str, dict[str, float]] = {}
     for name in truth:
@@ -195,12 +230,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--bbox", default="6.62,44.06,9.22,46.47", help="west,south,east,north")
     parser.add_argument("--tracking-uri", default=None, help="MLflow tracking URI")
     parser.add_argument("--max-iter", type=int, default=300, help="boosting rounds")
+    parser.add_argument(
+        "--fetch",
+        action="store_true",
+        help="first download the historical projections and E-OBS years the store lacks",
+    )
+    parser.add_argument("--workers", type=int, default=4, help="downloads at once with --fetch")
     args = parser.parse_args(argv)
     logs.configure("text")
 
     store = ClimateStore(open_store(args.store))
     bbox = BBox.parse(args.bbox)
     years = range(args.first_year, args.last_year + 1)
+    if args.fetch:
+        fetch_inputs(store, bbox, years, args.workers)
     model = {v: store.read_period("baseline", v, years).load() for v in VARIABLES}
     observed = {v: store.read_period("observed", v, years).load() for v in VARIABLES}
 
