@@ -10,7 +10,7 @@ locals {
   })
 }
 
-# Pulls the image, writes logs, reads the database password.
+# Pulls the image, writes logs, reads the database password for the ingest.
 resource "aws_iam_role" "execution" {
   name               = "${var.project}-execution"
   assume_role_policy = local.ecs_trust
@@ -39,6 +39,23 @@ resource "aws_iam_role_policy" "execution_secret" {
         Resource = aws_kms_key.main.arn
       },
     ]
+  })
+}
+
+locals {
+  api_db_user = "jugrid_api"
+}
+
+resource "aws_iam_role_policy" "api_database" {
+  name = "database-sign-in"
+  role = aws_iam_role.api.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = "rds-db:connect"
+      Resource = "${local.arn_prefix}:rds-db:${var.region}:${local.account_id}:dbuser:${aws_db_instance.main.resource_id}/${local.api_db_user}"
+    }]
   })
 }
 

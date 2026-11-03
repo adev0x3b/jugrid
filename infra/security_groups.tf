@@ -1,4 +1,5 @@
-# CloudFront's origin-facing addresses: the only ones that may reach the load balancer.
+# CloudFront's origin-facing addresses, VPC origins included: the only ones that may reach
+# the load balancer.
 data "aws_ec2_managed_prefix_list" "cloudfront" {
   name = "com.amazonaws.global.cloudfront.origin-facing"
 }

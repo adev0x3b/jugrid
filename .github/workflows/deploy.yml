@@ -18,9 +18,15 @@ concurrency:
 
 jobs:
   deploy:
+    # Only a CI run of a push to this repository's main deploys. `branches: [main]` alone also
+    # matches a pull request from a fork whose branch is called main, and this job would then
+    # build that fork's code with the deploy role.
     if: >-
       vars.AWS_DEPLOY_ROLE_ARN != '' &&
-      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+      (github.event_name == 'workflow_dispatch' || (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_repository.full_name == github.repository))
     runs-on: ubuntu-latest
     permissions:
       contents: read

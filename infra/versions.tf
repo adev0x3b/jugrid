@@ -6,10 +6,6 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.71"
     }
-    random = {
-      source  = "hashicorp/random"
-      version = "~> 3.7"
-    }
   }
 
   # State lives in an S3 bucket you create once; pass it with

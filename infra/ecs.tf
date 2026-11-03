@@ -20,15 +20,30 @@ locals {
   environment = [
     { name = "JUGRID_DB_HOST", value = aws_db_instance.main.address },
     { name = "JUGRID_DB_NAME", value = aws_db_instance.main.db_name },
-    { name = "JUGRID_DB_USER", value = aws_db_instance.main.username },
     { name = "JUGRID_STORE_URL", value = "s3://${aws_s3_bucket.data.id}/climate.zarr" },
-    { name = "JUGRID_S3_REGION", value = var.region },
+    { name = "JUGRID_AWS_REGION", value = var.region },
     { name = "JUGRID_CACHE_DIR", value = "/tmp/jugrid" },
   ]
 
-  secrets = [
-    { name = "JUGRID_DB_PASSWORD", valueFrom = "${aws_db_instance.main.master_user_secret[0].secret_arn}:password::" },
-  ]
+  # The API signs in as a role that can only read (migration 0002), with a 15-minute IAM token
+  # made for each new connection: no password to hold, and nothing to break when RDS rotates
+  # the owner's password. The short-lived ingest owns the tables and migrates them, so it signs
+  # in as the owner with the password RDS keeps in Secrets Manager.
+  database = {
+    api = {
+      environment = [
+        { name = "JUGRID_DB_USER", value = local.api_db_user },
+        { name = "JUGRID_DB_IAM_AUTH", value = "true" },
+      ]
+      secrets = []
+    }
+    ingest = {
+      environment = [{ name = "JUGRID_DB_USER", value = aws_db_instance.main.username }]
+      secrets = [
+        { name = "JUGRID_DB_PASSWORD", valueFrom = "${aws_db_instance.main.master_user_secret[0].secret_arn}:password::" },
+      ]
+    }
+  }
 
   container = {
     for name, task in {
@@ -41,8 +56,8 @@ locals {
         essential              = true
         readonlyRootFilesystem = true
         user                   = "10001"
-        environment            = local.environment
-        secrets                = local.secrets
+        environment            = concat(local.environment, local.database[name].environment)
+        secrets                = local.database[name].secrets
         mountPoints            = [{ sourceVolume = "tmp", containerPath = "/tmp" }]
         logConfiguration = {
           logDriver = "awslogs"

@@ -56,9 +56,10 @@ resource "aws_iam_role_policy" "scheduler" {
         Condition = { ArnEquals = { "ecs:cluster" = aws_ecs_cluster.main.arn } }
       },
       {
-        Effect   = "Allow"
-        Action   = "iam:PassRole"
-        Resource = [aws_iam_role.execution.arn, aws_iam_role.ingest.arn]
+        Effect    = "Allow"
+        Action    = "iam:PassRole"
+        Resource  = [aws_iam_role.execution.arn, aws_iam_role.ingest.arn]
+        Condition = { StringEquals = { "iam:PassedToService" = "ecs-tasks.amazonaws.com" } }
       },
     ]
   })

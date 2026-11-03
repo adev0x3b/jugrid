@@ -82,14 +82,17 @@ The API and the ingest read `JUGRID_*` variables; the full list is in
 
 ```
 CloudFront ─┬─ S3 (web app)
-            └─ /api/* ─ ALB ─ ECS Fargate (API) ─ RDS PostgreSQL + PostGIS
-                                                 └ S3 (Zarr climate store)
-EventBridge Scheduler ─ ECS Fargate (ingest, monthly) ─┘
+            └─ /api/* ─ VPC origin ─ internal ALB ─ ECS Fargate (API) ─ RDS PostgreSQL + PostGIS
+                                                                       └ S3 (Zarr climate store)
+EventBridge Scheduler ─ ECS Fargate (ingest, monthly) ───────────────────────┘
 ```
 
 - Private subnets for the tasks and the database, one NAT gateway, an S3 gateway endpoint.
-- The load balancer only accepts CloudFront's addresses and a secret origin header.
-- RDS keeps its password in Secrets Manager; Terraform never sees it.
+- The load balancer is internal: CloudFront reaches it through a VPC origin, and nothing else
+  can. CloudFront caches API answers for the few minutes the API allows.
+- The API signs in to the database with IAM tokens as a role that can only read. The ingest,
+  which migrates, uses the owner's password, which RDS keeps in Secrets Manager; Terraform
+  never sees it.
 - One KMS key for logs, images, the database and the climate store.
 - GitHub Actions deploys through OIDC: no AWS keys in the repository, and only `main` of this
   repository can assume the deploy role.
@@ -108,8 +111,9 @@ terraform apply
 
 Then set the repository variables `AWS_DEPLOY_ROLE_ARN` (output `deploy_role_arn`) and the
 ones in `deploy_settings`, and the Deploy workflow ships every green `main`. The first image
-must be pushed before the API service can start; `terraform output run_ingest` prints the
-command that fills the map.
+must be pushed before the API service can start, and the API can only sign in once the first
+ingest has created its database role: `terraform output run_ingest` prints the command that
+runs it and fills the map.
 
 The defaults are sized for a trial: one database instance in one zone, no WAF, CloudFront's
 own domain. `infra/.checkov.yaml` lists every check this setup skips and why.

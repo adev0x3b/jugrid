@@ -58,8 +58,6 @@ mock_provider "aws" {
   }
 }
 
-mock_provider "random" {}
-
 run "buckets_are_private_encrypted_and_tls_only" {
   command = apply
 
@@ -128,6 +126,23 @@ run "only_cloudfront_reaches_the_load_balancer" {
   command = apply
 
   assert {
+    condition     = aws_lb.main.internal && toset(aws_lb.main.subnets) == toset(aws_subnet.private[*].id)
+    error_message = "The load balancer is internal, in the private subnets, with no public address."
+  }
+
+  assert {
+    condition = one([
+      for o in aws_cloudfront_distribution.main.origin : one(o.vpc_origin_config).vpc_origin_id if o.origin_id == "api"
+    ]) == aws_cloudfront_vpc_origin.api.id
+    error_message = "CloudFront reaches the API through a VPC origin, not over the internet."
+  }
+
+  assert {
+    condition     = one(aws_cloudfront_vpc_origin.api.vpc_origin_endpoint_config).arn == aws_lb.main.arn
+    error_message = "The VPC origin is the load balancer."
+  }
+
+  assert {
     condition     = aws_vpc_security_group_ingress_rule.alb_from_cloudfront.prefix_list_id == data.aws_ec2_managed_prefix_list.cloudfront.id
     error_message = "The load balancer accepts CloudFront's origin-facing addresses only."
   }
@@ -138,22 +153,51 @@ run "only_cloudfront_reaches_the_load_balancer" {
   }
 
   assert {
-    condition     = one(aws_lb_listener.http.default_action).type == "fixed-response"
-    error_message = "Requests without the origin header get a 403, not the API."
-  }
-
-  assert {
-    condition = one([
-      for o in aws_cloudfront_distribution.main.origin : one(o.custom_header).value if o.origin_id == "api"
-    ]) == random_password.origin_secret.result
-    error_message = "CloudFront sends the header the listener rule checks."
-  }
-
-  assert {
     condition = one([
       for b in aws_cloudfront_distribution.main.ordered_cache_behavior : b.target_origin_id if b.path_pattern == "/api/*"
     ]) == "api"
     error_message = "/api/* goes to the load balancer."
+  }
+
+  assert {
+    condition = one([
+      for b in aws_cloudfront_distribution.main.ordered_cache_behavior : b.cache_policy_id if b.path_pattern == "/api/*"
+    ]) == aws_cloudfront_cache_policy.api.id
+    error_message = "API answers are cached as the API says, so a burst reaches it once."
+  }
+
+  assert {
+    condition     = one(one(aws_cloudfront_cache_policy.api.parameters_in_cache_key_and_forwarded_to_origin).query_strings_config).query_string_behavior == "all"
+    error_message = "The cache key holds the query string: scenario, view and kind change the answer."
+  }
+}
+
+run "the_api_signs_in_to_the_database_as_a_reader_without_a_password" {
+  command = apply
+
+  assert {
+    condition     = length(jsondecode(aws_ecs_task_definition.api.container_definitions)[0].secrets) == 0
+    error_message = "The API holds no database password."
+  }
+
+  assert {
+    condition = { for e in jsondecode(aws_ecs_task_definition.api.container_definitions)[0].environment : e.name => e.value if startswith(e.name, "JUGRID_DB_") } == {
+      JUGRID_DB_HOST     = aws_db_instance.main.address
+      JUGRID_DB_NAME     = aws_db_instance.main.db_name
+      JUGRID_DB_USER     = "jugrid_api"
+      JUGRID_DB_IAM_AUTH = "true"
+    }
+    error_message = "The API signs in as jugrid_api with an IAM token."
+  }
+
+  assert {
+    condition     = endswith(jsondecode(aws_iam_role_policy.api_database.policy).Statement[0].Resource, ":dbuser:${aws_db_instance.main.resource_id}/jugrid_api")
+    error_message = "The API role may sign in as jugrid_api and no one else."
+  }
+
+  assert {
+    condition     = [for s in jsondecode(aws_ecs_task_definition.ingest.container_definitions)[0].secrets : s.name] == ["JUGRID_DB_PASSWORD"]
+    error_message = "The ingest, which migrates, signs in as the owner."
   }
 }
 
@@ -168,6 +212,15 @@ run "github_deploys_only_from_main_of_this_repository" {
   assert {
     condition     = !contains(flatten([for s in jsondecode(aws_iam_role_policy.deploy.policy).Statement : s.Action]), "*")
     error_message = "The deploy role has no wildcard actions."
+  }
+
+  assert {
+    condition = alltrue([
+      for policy in [aws_iam_role_policy.deploy.policy, aws_iam_role_policy.scheduler.policy] : alltrue([
+        for s in jsondecode(policy).Statement : s.Condition.StringEquals["iam:PassedToService"] == "ecs-tasks.amazonaws.com" if s.Action == "iam:PassRole"
+      ])
+    ])
+    error_message = "Roles are passed to ECS tasks and nothing else."
   }
 }
 
