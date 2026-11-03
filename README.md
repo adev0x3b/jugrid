@@ -115,8 +115,10 @@ must be pushed before the API service can start, and the API can only sign in on
 ingest has created its database role: `terraform output run_ingest` prints the command that
 runs it and fills the map.
 
-The defaults are sized for a trial: one database instance in one zone, no WAF, CloudFront's
-own domain. `infra/.checkov.yaml` lists every check this setup skips and why.
+The defaults are sized for a trial: one database instance in one zone, CloudFront's own
+domain, and no WAF. `waf_enabled = true` puts AWS WAF in front of CloudFront (AWS's IP
+reputation, known-bad-input and core rule groups, a per-address rate limit set by
+`waf_rate_limit`, blocked requests logged) for about $9 a month before traffic. `infra/.checkov.yaml` lists every check this setup skips and why.
 
 ## Development
 

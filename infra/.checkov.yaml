@@ -17,7 +17,9 @@ skip-check:
   - CKV2_AWS_20
   - CKV_AWS_378
   - CKV_AWS_260
-  # WAF costs more than the rest of the stack for a read-only, unauthenticated API.
+  # WAF is off by default (var.waf_enabled turns it on: managed rule groups including Log4j,
+  # a rate limit, blocked requests logged): about $9 a month for a read-only map. The load
+  # balancer is internal, reachable from CloudFront only, so WAF belongs on CloudFront.
   - CKV_AWS_68
   - CKV2_AWS_28
   - CKV2_AWS_47

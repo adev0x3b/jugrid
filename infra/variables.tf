@@ -73,3 +73,20 @@ variable "log_retention_days" {
   type        = number
   default     = 90
 }
+
+variable "waf_enabled" {
+  description = "Put AWS WAF (managed rule groups and a rate limit) in front of CloudFront. About $9 a month before traffic."
+  type        = bool
+  default     = false
+}
+
+variable "waf_rate_limit" {
+  description = "Requests one address may make in five minutes before WAF answers 429."
+  type        = number
+  default     = 1000
+
+  validation {
+    condition     = var.waf_rate_limit >= 10 && var.waf_rate_limit <= 2000000000
+    error_message = "WAF accepts 10 to 2,000,000,000 requests per window."
+  }
+}

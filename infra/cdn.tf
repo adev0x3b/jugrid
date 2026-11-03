@@ -88,6 +88,7 @@ resource "aws_cloudfront_distribution" "main" {
   default_root_object = "index.html"
   price_class         = "PriceClass_100"
   http_version        = "http2and3"
+  web_acl_id          = var.waf_enabled ? aws_wafv2_web_acl.cdn[0].arn : null
 
   origin {
     origin_id                = "web"

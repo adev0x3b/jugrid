@@ -58,6 +58,18 @@ mock_provider "aws" {
   }
 }
 
+# CloudFront's WAF lives in us-east-1.
+mock_provider "aws" {
+  alias = "us_east_1"
+
+  mock_resource "aws_wafv2_web_acl" {
+    defaults = { arn = "arn:aws:wafv2:us-east-1:123456789012:global/webacl/jugrid-cdn/test" }
+  }
+  mock_resource "aws_cloudwatch_log_group" {
+    defaults = { arn = "arn:aws:logs:us-east-1:123456789012:log-group:aws-waf-logs-jugrid" }
+  }
+}
+
 run "buckets_are_private_encrypted_and_tls_only" {
   command = apply
 
@@ -283,6 +295,88 @@ run "the_api_reads_the_store_and_only_the_ingest_writes_it" {
   assert {
     condition     = aws_scheduler_schedule.ingest.target[0].ecs_parameters[0].task_definition_arn == aws_ecs_task_definition.ingest.arn_without_revision
     error_message = "The schedule runs the ingest task."
+  }
+}
+
+run "waf_is_off_unless_asked_for" {
+  command = plan
+
+  assert {
+    condition     = length(aws_wafv2_web_acl.cdn) == 0
+    error_message = "WAF costs money every month: it is off by default."
+  }
+
+  assert {
+    condition     = aws_cloudfront_distribution.main.web_acl_id == null
+    error_message = "Without WAF, CloudFront has no web ACL."
+  }
+}
+
+run "waf_guards_cloudfront_when_turned_on" {
+  command = apply
+
+  variables {
+    waf_enabled    = true
+    waf_rate_limit = 500
+  }
+
+  assert {
+    condition     = aws_cloudfront_distribution.main.web_acl_id == aws_wafv2_web_acl.cdn[0].arn
+    error_message = "CloudFront uses the web ACL."
+  }
+
+  assert {
+    condition     = aws_wafv2_web_acl.cdn[0].scope == "CLOUDFRONT"
+    error_message = "A web ACL for CloudFront has CLOUDFRONT scope."
+  }
+
+  assert {
+    condition = toset(flatten([
+      for r in aws_wafv2_web_acl.cdn[0].rule : [
+        for s in r.statement : [for m in s.managed_rule_group_statement : m.name]
+      ]
+    ])) == toset(["AWSManagedRulesAmazonIpReputationList", "AWSManagedRulesKnownBadInputsRuleSet", "AWSManagedRulesCommonRuleSet"])
+    error_message = "Bad addresses, known exploits (Log4j among them) and the core rule set are blocked."
+  }
+
+  assert {
+    condition = one(flatten([
+      for r in aws_wafv2_web_acl.cdn[0].rule : [
+        for s in r.statement : [for b in s.rate_based_statement : b.limit]
+      ]
+    ])) == 500
+    error_message = "One address is limited to waf_rate_limit requests per window."
+  }
+
+  assert {
+    condition = one(flatten([
+      for r in aws_wafv2_web_acl.cdn[0].rule : [
+        for a in r.action : [for b in a.block : [for c in b.custom_response : c.response_code]]
+      ] if r.name == "rate-limit"
+    ])) == 429
+    error_message = "Over the limit is answered 429, not 403."
+  }
+
+  assert {
+    condition     = one(aws_wafv2_web_acl.cdn[0].default_action[0].allow) != null
+    error_message = "What no rule blocks is allowed."
+  }
+
+  assert {
+    condition     = toset(aws_wafv2_web_acl_logging_configuration.cdn[0].log_destination_configs) == toset([aws_cloudwatch_log_group.waf[0].arn])
+    error_message = "WAF logs to its log group."
+  }
+
+  assert {
+    condition = (
+      aws_wafv2_web_acl_logging_configuration.cdn[0].logging_filter[0].default_behavior == "DROP" &&
+      toset(flatten([
+        for f in aws_wafv2_web_acl_logging_configuration.cdn[0].logging_filter[0].filter : [
+          for c in f.condition : [for a in c.action_condition : a.action]
+        ] if f.behavior == "KEEP"
+      ])) == toset(["BLOCK"])
+    )
+    error_message = "Only blocked requests are logged."
   }
 }
 
