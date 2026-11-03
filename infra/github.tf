@@ -47,9 +47,10 @@ resource "aws_iam_role_policy" "deploy" {
         Resource = aws_ecr_repository.api.arn
       },
       {
-        Effect   = "Allow"
-        Action   = ["kms:GenerateDataKey", "kms:Decrypt"]
-        Resource = aws_kms_key.main.arn
+        Effect    = "Allow"
+        Action    = ["kms:GenerateDataKey", "kms:Decrypt"]
+        Resource  = aws_kms_key.main.arn
+        Condition = { StringEquals = { "kms:ViaService" = "ecr.${var.region}.amazonaws.com" } }
       },
       {
         Effect   = "Allow"

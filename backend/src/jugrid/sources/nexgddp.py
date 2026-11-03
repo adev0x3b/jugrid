@@ -19,6 +19,7 @@ import httpx
 import xarray as xr
 
 from jugrid.geo import BBox
+from jugrid.sources.http import check_size
 
 log = logging.getLogger(__name__)
 
@@ -118,7 +119,11 @@ def _download(
         try:
             with client.stream("GET", url, timeout=600) as response:
                 response.raise_for_status()
+                received = 0
+                check_size(response, received)
                 for chunk in response.iter_bytes(1 << 20):
+                    received += len(chunk)
+                    check_size(response, received)
                     handle.write(chunk)
             handle.flush()
             return

@@ -6,7 +6,7 @@ data "aws_cloudfront_cache_policy" "optimized" {
 # query string. A burst of map loads then reaches the API once.
 resource "aws_cloudfront_cache_policy" "api" {
   name        = "${var.project}-api"
-  comment     = "As long as the API's Cache-Control says, per query string"
+  comment     = "As long as the API's Cache-Control says, per API parameter"
   min_ttl     = 0
   default_ttl = 0
   max_ttl     = 3600
@@ -21,8 +21,13 @@ resource "aws_cloudfront_cache_policy" "api" {
     headers_config {
       header_behavior = "none"
     }
+    # Only the API's own parameters: made-up ones would each miss the cache and reach the
+    # API. They are also all CloudFront forwards, with no cookies or viewer headers.
     query_strings_config {
-      query_string_behavior = "all"
+      query_string_behavior = "whitelist"
+      query_strings {
+        items = ["kind", "scenario", "view", "order", "limit"]
+      }
     }
   }
 }
@@ -40,10 +45,6 @@ resource "aws_cloudfront_vpc_origin" "api" {
       quantity = 1
     }
   }
-}
-
-data "aws_cloudfront_origin_request_policy" "all_but_host" {
-  name = "Managed-AllViewerExceptHostHeader"
 }
 
 resource "aws_cloudfront_origin_access_control" "web" {
@@ -121,7 +122,6 @@ resource "aws_cloudfront_distribution" "main" {
     cached_methods             = ["GET", "HEAD"]
     compress                   = true
     cache_policy_id            = aws_cloudfront_cache_policy.api.id
-    origin_request_policy_id   = data.aws_cloudfront_origin_request_policy.all_but_host.id
     response_headers_policy_id = aws_cloudfront_response_headers_policy.security.id
   }
 

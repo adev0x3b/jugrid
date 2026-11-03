@@ -17,6 +17,7 @@ from shapely.geometry import LineString, box, shape
 from shapely.geometry.base import BaseGeometry
 
 from jugrid.geo import BBox, length_km
+from jugrid.sources.http import check_size
 
 SAMPLE_STEP_DEG = 0.0008  # about one pixel
 STEM = re.compile(r"ID\d{1,4}_[NS]\d{1,2}_[EW]\d{1,3}")
@@ -50,10 +51,14 @@ def _download(client: httpx.Client, url: str, dest: Path) -> None:
     try:
         with client.stream("GET", url, timeout=600) as response:
             response.raise_for_status()
+            received = 0
+            check_size(response, received)
             with partial.open("wb") as handle:
                 for chunk in response.iter_bytes(1 << 20):
+                    received += len(chunk)
+                    check_size(response, received)
                     handle.write(chunk)
-    except httpx.HTTPError as error:
+    except (httpx.HTTPError, ValueError) as error:
         partial.unlink(missing_ok=True)
         raise FloodSourceError(f"could not fetch {url}: {error}") from error
     partial.replace(dest)

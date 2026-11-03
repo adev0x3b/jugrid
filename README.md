@@ -144,7 +144,7 @@ docker compose exec -T api python - < backend/tests/seed_e2e.py
 cd web && npx playwright test
 ```
 
-The API's OpenAPI page is at http://127.0.0.1:8096/api/docs.
+The API is described at http://127.0.0.1:8096/api/openapi.json.
 
 The screenshots above come from the Screenshots workflow (run it from the Actions tab): it
 loads the real sources into the compose stack and runs `web/scripts/screenshots.ts`.

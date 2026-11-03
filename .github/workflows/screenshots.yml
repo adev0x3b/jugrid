@@ -22,6 +22,8 @@ jobs:
       PERIOD_YEARS: ${{ inputs.period_years }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - run: docker compose up -d --build --wait
       - run: docker compose run --rm ingest
       - run: curl -fsS "$JUGRID_URL/api/summary"

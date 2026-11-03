@@ -33,6 +33,9 @@ jobs:
       # To assume the deploy role through GitHub's OIDC provider. No `environment:` here: it
       # would change the token's subject and the role only trusts refs/heads/main.
       id-token: write
+    defaults:
+      run:
+        shell: bash # -eo pipefail: a failed aws call in a pipe stops the job
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
       IMAGE_TAG: ${{ github.event.workflow_run.head_sha || github.sha }}
@@ -40,6 +43,24 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.IMAGE_TAG }}
+          persist-credentials: false
+
+      # Everything that runs third-party code (npm packages, the image build) runs before the
+      # job holds AWS credentials, so none of it can read them.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build the web app
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build the API image
+        run: docker build -t jugrid-api:release backend
 
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
@@ -49,17 +70,22 @@ jobs:
       - id: ecr
         uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
 
-      - name: Build and push the API image
+      - name: Push the API image
         env:
           IMAGE: ${{ steps.ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
         run: |
-          docker build -t "$IMAGE" backend
+          docker tag jugrid-api:release "$IMAGE"
           docker push "$IMAGE"
           echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
 
       - name: Point the API and the ingest at the new image
+        env:
+          API_TASK_FAMILY: ${{ vars.API_TASK_FAMILY }}
+          INGEST_TASK_FAMILY: ${{ vars.INGEST_TASK_FAMILY }}
+          ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+          ECS_SERVICE: ${{ vars.ECS_SERVICE }}
         run: |
-          for family in "${{ vars.API_TASK_FAMILY }}" "${{ vars.INGEST_TASK_FAMILY }}"; do
+          for family in "$API_TASK_FAMILY" "$INGEST_TASK_FAMILY"; do
             aws ecs describe-task-definition --task-definition "$family" --query taskDefinition \
               | jq --arg image "$IMAGE" '.containerDefinitions[0].image = $image
                   | del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
@@ -67,28 +93,23 @@ jobs:
             aws ecs register-task-definition --cli-input-json file://task.json \
               --query taskDefinition.taskDefinitionArn --output text > "$family.arn"
           done
-          aws ecs update-service --cluster "${{ vars.ECS_CLUSTER }}" --service "${{ vars.ECS_SERVICE }}" \
-            --task-definition "$(cat "${{ vars.API_TASK_FAMILY }}.arn")" > /dev/null
-          aws ecs wait services-stable --cluster "${{ vars.ECS_CLUSTER }}" --services "${{ vars.ECS_SERVICE }}"
-
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 26
-          cache: npm
-          cache-dependency-path: web/package-lock.json
+          aws ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE" \
+            --task-definition "$(cat "$API_TASK_FAMILY.arn")" > /dev/null
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
 
       - name: Publish the web app
         working-directory: web
+        env:
+          WEB_BUCKET: ${{ vars.WEB_BUCKET }}
+          DISTRIBUTION: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
         run: |
-          npm ci
-          npm run build
           # Hashed assets forever, the page itself never: a deploy shows up on the next load.
-          aws s3 sync dist/assets "s3://${{ vars.WEB_BUCKET }}/assets" --delete \
+          aws s3 sync dist/assets "s3://$WEB_BUCKET/assets" --delete \
             --cache-control "public, max-age=31536000, immutable" --exclude "*.mjs"
-          aws s3 sync dist/assets "s3://${{ vars.WEB_BUCKET }}/assets" \
+          aws s3 sync dist/assets "s3://$WEB_BUCKET/assets" \
             --cache-control "public, max-age=31536000, immutable" \
             --exclude "*" --include "*.mjs" --content-type text/javascript
-          aws s3 sync dist "s3://${{ vars.WEB_BUCKET }}" --delete --exclude "assets/*" \
+          aws s3 sync dist "s3://$WEB_BUCKET" --delete --exclude "assets/*" \
             --cache-control "no-cache"
           aws cloudfront create-invalidation \
-            --distribution-id "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" --paths "/index.html" "/" > /dev/null
+            --distribution-id "$DISTRIBUTION" --paths "/index.html" "/" > /dev/null

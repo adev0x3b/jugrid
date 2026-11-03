@@ -7,7 +7,6 @@ import tempfile
 from collections.abc import Sequence
 from pathlib import Path
 
-import httpx
 from alembic import command
 from alembic.config import Config
 
@@ -16,10 +15,9 @@ from jugrid.climate import ingest
 from jugrid.climate.store import ClimateStore, open_store
 from jugrid.config import Settings
 from jugrid.db import session_factory
-from jugrid.sources import jrcflood, overpass
+from jugrid.sources import http, jrcflood, overpass
 
 STEPS = ("assets", "climate", "score")
-USER_AGENT = "JuGrid/0.1 (+https://github.com/adev0x3b/jugrid)"
 
 
 def migrate(settings: Settings) -> None:
@@ -48,7 +46,7 @@ def climate_store(settings: Settings) -> ClimateStore:
 def run(settings: Settings, steps: Sequence[str]) -> None:
     make_session = session_factory(settings.database_url)
     store = climate_store(settings)
-    with httpx.Client(headers={"User-Agent": USER_AGENT}, follow_redirects=True) as client:
+    with http.client() as client:
         if "assets" in steps:
             with make_session() as session, pipeline.recorded(session, "assets") as record:
                 assets = overpass.fetch(client, settings.overpass_url, settings.region_iso)

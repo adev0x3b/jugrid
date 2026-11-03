@@ -156,8 +156,17 @@ class TestExport:
         assert ",=HYPERLINK" not in body
 
 
-def test_openapi_is_served(client: TestClient) -> None:
+def test_openapi_is_served_without_a_page_that_loads_scripts_from_a_cdn(
+    client: TestClient,
+) -> None:
     assert client.get("/api/openapi.json").json()["info"]["title"] == "JuGrid API"
+    assert client.get("/api/docs").status_code == 404
+
+
+def test_a_kind_repeated_many_times_is_one_kind(client: TestClient) -> None:
+    once = client.get("/api/ranking", params={"kind": "substation"}).json()
+    many = client.get("/api/ranking", params=[("kind", "substation")] * 400).json()
+    assert many == once
 
 
 class TestCaching:

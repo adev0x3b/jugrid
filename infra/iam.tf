@@ -34,9 +34,10 @@ resource "aws_iam_role_policy" "execution_secret" {
         Resource = aws_db_instance.main.master_user_secret[0].secret_arn
       },
       {
-        Effect   = "Allow"
-        Action   = "kms:Decrypt"
-        Resource = aws_kms_key.main.arn
+        Effect    = "Allow"
+        Action    = "kms:Decrypt"
+        Resource  = aws_kms_key.main.arn
+        Condition = { StringEquals = { "kms:ViaService" = "secretsmanager.${var.region}.amazonaws.com" } }
       },
     ]
   })
@@ -72,8 +73,8 @@ resource "aws_iam_role" "ingest" {
 
 resource "aws_iam_role_policy" "store" {
   for_each = {
-    api    = { role = aws_iam_role.api.id, actions = ["s3:GetObject"] }
-    ingest = { role = aws_iam_role.ingest.id, actions = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"] }
+    api    = { role = aws_iam_role.api.id, actions = ["s3:GetObject"], kms = ["kms:Decrypt"] }
+    ingest = { role = aws_iam_role.ingest.id, actions = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"], kms = ["kms:Decrypt", "kms:GenerateDataKey"] }
   }
   name = "climate-store"
   role = each.value.role
@@ -92,9 +93,10 @@ resource "aws_iam_role_policy" "store" {
         Resource = "${aws_s3_bucket.data.arn}/climate.zarr/*"
       },
       {
-        Effect   = "Allow"
-        Action   = ["kms:Decrypt", "kms:GenerateDataKey"]
-        Resource = aws_kms_key.main.arn
+        Effect    = "Allow"
+        Action    = each.value.kms
+        Resource  = aws_kms_key.main.arn
+        Condition = { StringEquals = { "kms:ViaService" = "s3.${var.region}.amazonaws.com" } }
       },
     ]
   })

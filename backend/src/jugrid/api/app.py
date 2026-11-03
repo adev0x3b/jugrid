@@ -95,7 +95,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title="JuGrid API",
         version="0.1.0",
-        docs_url="/api/docs",
+        # No Swagger page: it loads its script from a CDN, which the CSP rightly refuses.
+        docs_url=None,
         openapi_url="/api/openapi.json",
         redoc_url=None,
     )
@@ -123,7 +124,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     Db = Annotated[Session, Depends(session)]  # noqa: N806
 
     def kinds_or_all(kinds: list[AssetKind] | None) -> list[str]:
-        return [k.value for k in (kinds or list(AssetKind))]
+        # A set: ?kind=line repeated as often as a URL allows is still one kind.
+        return sorted({k.value for k in (kinds or list(AssetKind))})
 
     @app.get("/api/health")
     def health(db: Db, response: Response) -> dict[str, str]:

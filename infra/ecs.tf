@@ -56,6 +56,7 @@ locals {
         essential              = true
         readonlyRootFilesystem = true
         user                   = "10001"
+        linuxParameters        = { capabilities = { drop = ["ALL"] } }
         environment            = concat(local.environment, local.database[name].environment)
         secrets                = local.database[name].secrets
         mountPoints            = [{ sourceVolume = "tmp", containerPath = "/tmp" }]

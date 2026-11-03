@@ -167,8 +167,17 @@ run "only_cloudfront_reaches_the_load_balancer" {
   }
 
   assert {
-    condition     = one(one(aws_cloudfront_cache_policy.api.parameters_in_cache_key_and_forwarded_to_origin).query_strings_config).query_string_behavior == "all"
-    error_message = "The cache key holds the query string: scenario, view and kind change the answer."
+    condition = toset(one(one(one(aws_cloudfront_cache_policy.api.parameters_in_cache_key_and_forwarded_to_origin).query_strings_config).query_strings).items) == toset([
+      "kind", "scenario", "view", "order", "limit",
+    ])
+    error_message = "The cache key is the API's parameters only: made-up ones must not bypass the cache."
+  }
+
+  assert {
+    condition = one([
+      for b in aws_cloudfront_distribution.main.ordered_cache_behavior : b.origin_request_policy_id if b.path_pattern == "/api/*"
+    ]) == null
+    error_message = "No viewer headers or cookies are forwarded to the API."
   }
 }
 
@@ -250,6 +259,25 @@ run "the_api_reads_the_store_and_only_the_ingest_writes_it" {
   assert {
     condition     = alltrue([for t in [aws_ecs_task_definition.api, aws_ecs_task_definition.ingest] : jsondecode(t.container_definitions)[0].readonlyRootFilesystem])
     error_message = "Containers run with a read-only root file system."
+  }
+
+  assert {
+    condition     = alltrue([for t in [aws_ecs_task_definition.api, aws_ecs_task_definition.ingest] : jsondecode(t.container_definitions)[0].linuxParameters.capabilities.drop == ["ALL"]])
+    error_message = "Containers run without Linux capabilities."
+  }
+
+  assert {
+    condition = alltrue(flatten([
+      for policy in [aws_iam_role_policy.store["api"].policy, aws_iam_role_policy.store["ingest"].policy, aws_iam_role_policy.execution_secret.policy, aws_iam_role_policy.deploy.policy] : [
+        for s in jsondecode(policy).Statement : can(s.Condition.StringEquals["kms:ViaService"]) if startswith(try(s.Action[0], s.Action), "kms:")
+      ]
+    ]))
+    error_message = "Roles use the KMS key only through the service that needs it."
+  }
+
+  assert {
+    condition     = !contains(jsondecode(aws_iam_role_policy.store["api"].policy).Statement[2].Action, "kms:GenerateDataKey")
+    error_message = "The API, which only reads, cannot encrypt with the key."
   }
 
   assert {
