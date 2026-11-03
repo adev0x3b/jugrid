@@ -1,0 +1,47 @@
+name: Screenshots
+
+# Loads the real data (OpenStreetMap, NEX-GDDP-CMIP6, JRC flood maps) into the compose
+# stack and takes the README's screenshots. Run by hand; the PNGs come back as an artifact.
+on:
+  workflow_dispatch:
+    inputs:
+      period_years:
+        description: Years per climate period
+        default: "20"
+
+permissions:
+  contents: read
+
+jobs:
+  screenshots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      WEB_PORT: 18096
+      JUGRID_URL: http://127.0.0.1:18096
+      PERIOD_YEARS: ${{ inputs.period_years }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: docker compose up -d --build --wait
+      - run: docker compose run --rm ingest
+      - run: curl -fsS "$JUGRID_URL/api/summary"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: npx playwright install --with-deps chromium
+        working-directory: web
+      - run: npx tsx scripts/screenshots.ts ../docs/screenshots
+        working-directory: web
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: screenshots
+          path: docs/screenshots
+          retention-days: 7
+      - if: failure()
+        run: docker compose logs --no-color
+      - if: always()
+        run: docker compose down -v

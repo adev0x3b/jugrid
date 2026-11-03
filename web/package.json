@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "lint": "oxlint --deny-warnings src e2e && prettier --check .",
+    "lint": "oxlint --deny-warnings src e2e scripts && prettier --check .",
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -35,6 +35,7 @@
     "oxlint": "^1.90.0",
     "prettier": "^3.9.10",
     "tailwindcss": "^4.3.4",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
     "vitest": "^5.1.0"
