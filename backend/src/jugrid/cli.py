@@ -1,7 +1,6 @@
 """``jugrid``: migrate the database and run the ingest steps."""
 
 import argparse
-import logging
 import sys
 import tempfile
 from collections.abc import Sequence
@@ -10,7 +9,7 @@ from pathlib import Path
 from alembic import command
 from alembic.config import Config
 
-from jugrid import pipeline
+from jugrid import logs, pipeline
 from jugrid.climate import ingest
 from jugrid.climate.store import ClimateStore, open_store
 from jugrid.config import Settings
@@ -105,9 +104,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="assets (OpenStreetMap), climate (NEX-GDDP-CMIP6), score (with the flood maps)",
     )
     args = parser.parse_args(argv)
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
-    logging.getLogger("httpx").setLevel(logging.WARNING)
     settings = Settings()
+    logs.configure(settings.log_format)
     if args.command == "migrate":
         migrate(settings)
     else:

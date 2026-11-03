@@ -75,6 +75,7 @@ The API and the ingest read `JUGRID_*` variables; the full list is in
 | `JUGRID_REGION_BBOX` | `6.62,44.06,9.22,46.47` | West, south, east, north of the climate grid |
 | `JUGRID_CLIMATE_MODEL` | `EC-Earth3` | Any NEX-GDDP-CMIP6 model with `r1i1p1f1` |
 | `JUGRID_OVERPASS_URL` | `https://overpass-api.de/api/interpreter` | Overpass instance |
+| `JUGRID_LOG_FORMAT` | `json` | `json` (one object per line, with request ids) or `text` |
 
 ## Deploying to AWS
 

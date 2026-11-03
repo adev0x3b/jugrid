@@ -205,3 +205,33 @@ class TestTheApiOnlyReads:
             engine.dispose()
             session.execute(text("ALTER ROLE jugrid_api PASSWORD NULL"))
             session.commit()
+
+
+class TestRequestLogs:
+    def test_every_answer_carries_a_request_id(self, client: TestClient) -> None:
+        response = client.get("/api/meta")
+        assert len(response.headers["x-request-id"]) == 32
+
+    def test_a_plain_request_id_from_the_caller_is_kept(self, client: TestClient) -> None:
+        response = client.get("/api/meta", headers={"X-Request-Id": "trace-42"})
+        assert response.headers["x-request-id"] == "trace-42"
+
+    def test_a_request_is_logged_with_its_status_and_duration(
+        self, client: TestClient, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        caplog.set_level("INFO", logger="jugrid.api")
+        client.get("/api/assets/999999", headers={"X-Request-Id": "trace-43"})
+        [record] = [r for r in caplog.records if r.name == "jugrid.api"]
+        fields = record.fields  # type: ignore[attr-defined]
+        assert fields["method"] == "GET"
+        assert fields["path"] == "/api/assets/999999"
+        assert fields["status"] == 404
+        assert fields["duration_ms"] >= 0
+        assert record.request_id == "trace-43"  # type: ignore[attr-defined]
+
+    def test_health_checks_are_not_logged(
+        self, client: TestClient, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        caplog.set_level("INFO", logger="jugrid.api")
+        client.get("/api/health")
+        assert not [r for r in caplog.records if r.name == "jugrid.api"]
