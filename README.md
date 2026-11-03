@@ -75,6 +75,7 @@ The API and the ingest read `JUGRID_*` variables; the full list is in
 | `JUGRID_REGION_BBOX` | `6.62,44.06,9.22,46.47` | West, south, east, north of the climate grid |
 | `JUGRID_CLIMATE_MODEL` | `EC-Earth3` | Any NEX-GDDP-CMIP6 model with `r1i1p1f1` |
 | `JUGRID_OVERPASS_URL` | `https://overpass-api.de/api/interpreter` | Overpass instance |
+| `JUGRID_LOG_FORMAT` | `json` | `json` (one object per line, with request ids) or `text` |
 
 ## Deploying to AWS
 
@@ -118,7 +119,13 @@ runs it and fills the map.
 The defaults are sized for a trial: one database instance in one zone, CloudFront's own
 domain, and no WAF. `waf_enabled = true` puts AWS WAF in front of CloudFront (AWS's IP
 reputation, known-bad-input and core rule groups, a per-address rate limit set by
-`waf_rate_limit`, blocked requests logged) for about $9 a month before traffic. `infra/.checkov.yaml` lists every check this setup skips and why.
+`waf_rate_limit`, blocked requests logged) for about $9 a month before traffic.
+`infra/.checkov.yaml` lists every check this setup skips and why.
+
+Monitoring: alarms on API errors, an API with no healthy task, slow answers, database CPU and
+free storage, plus an alert when the ingest fails, all on one SNS topic (`alert_email`
+subscribes an address). The API scales on CPU up to `api_max_count` tasks and logs one JSON
+line per request. [docs/runbook.md](docs/runbook.md) says what to do for each alert.
 
 ## Development
 
@@ -126,7 +133,7 @@ reputation, known-bad-input and core rule groups, a per-address rate limit set b
 # Pipeline and API (Python 3.14, uv); the integration tests start PostGIS with Docker
 cd backend
 uv sync
-uv run pytest
+uv run pytest --cov            # fails under 90% line and branch coverage
 uv run ruff check src tests && uv run mypy src tests
 
 # Web app (Node 26) with hot reload, against the composed API

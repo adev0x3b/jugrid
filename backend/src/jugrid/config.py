@@ -8,6 +8,7 @@ from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from jugrid.geo import BBox
+from jugrid.logs import LogFormat
 from jugrid.risk.hazards import Scenario
 
 
@@ -45,6 +46,9 @@ class Settings(BaseSettings):
     flood_return_period: int = 100
 
     cors_origins: list[str] = []
+
+    # json for CloudWatch Logs Insights and other log stores, text for a terminal.
+    log_format: LogFormat = "json"
 
     @model_validator(mode="after")
     def _database_from_parts(self) -> Settings:

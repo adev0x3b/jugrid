@@ -35,6 +35,15 @@ resource "aws_kms_key" "main" {
           }
         }
       },
+      {
+        # The alerts topic is encrypted with this key; alarms and events publish to it.
+        Sid       = "AlertsPublish"
+        Effect    = "Allow"
+        Principal = { Service = ["cloudwatch.amazonaws.com", "events.amazonaws.com"] }
+        Action    = ["kms:Decrypt", "kms:GenerateDataKey*"]
+        Resource  = "*"
+        Condition = { StringEquals = { "aws:SourceAccount" = local.account_id } }
+      },
     ]
   })
 }

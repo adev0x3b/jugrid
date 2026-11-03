@@ -1,6 +1,7 @@
 """The HTTP API under ``/api``. Read-only: data changes only through ``jugrid ingest``."""
 
 import json
+import logging
 import threading
 import time
 from collections.abc import Awaitable, Callable, Iterator
@@ -14,6 +15,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from jugrid import logs
 from jugrid.api import queries
 from jugrid.api.schemas import (
     AssetOut,
@@ -63,6 +65,8 @@ Kinds = Annotated[list[AssetKind] | None, Query(alias="kind")]
 # answer for a few minutes; that is also what absorbs a burst of requests.
 CACHE_CONTROL = "public, max-age=300"
 
+log = logging.getLogger("jugrid.api")
+
 
 class IndicatorCache:
     """The indicators read from the Zarr store, kept for a minute between reads."""
@@ -79,6 +83,39 @@ class IndicatorCache:
                 self._value = self._store.read_indicators()
                 self._read_at = time.monotonic()
             return self._value
+
+
+async def request_log(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    rid = logs.request_id_from(request.headers.get("x-request-id"))
+    token = logs.request_id.set(rid)
+    started = time.perf_counter()
+    status = 500
+    try:
+        response = await call_next(request)
+        status = response.status_code
+        response.headers["X-Request-Id"] = rid
+        return response
+    finally:
+        # The load balancer's health checks every 15 seconds would drown the rest.
+        if request.url.path != "/api/health" or status != 200:
+            log.info(
+                "%s %s %s",
+                request.method,
+                request.url.path,
+                status,
+                extra={
+                    "request_id": rid,
+                    "fields": {
+                        "method": request.method,
+                        "path": request.url.path,
+                        "status": status,
+                        "duration_ms": round((time.perf_counter() - started) * 1000, 1),
+                    },
+                },
+            )
+        logs.request_id.reset(token)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -101,6 +138,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         redoc_url=None,
     )
     app.add_middleware(GZipMiddleware, minimum_size=2048)
+
+    app.middleware("http")(request_log)
 
     @app.middleware("http")
     async def cache_headers(
@@ -262,4 +301,6 @@ def _cells_geojson(layer: xr.DataArray, hazard: Hazard) -> str:
 
 
 def app_factory() -> FastAPI:
-    return create_app()
+    settings = Settings()
+    logs.configure(settings.log_format)
+    return create_app(settings)
