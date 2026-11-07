@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useEffectEvent } from "react";
 import { api, type Hazard, type Risk, type Scenario, type View } from "../api";
 import { formatKm, formatKv, formatValue } from "../lib/format";
 import { KIND_SINGULAR, LINE_KINDS, VIEW_LABEL } from "../lib/levels";
@@ -20,14 +20,20 @@ export function AssetPanel({
 }) {
   const { data, error, isPending } = useQuery({
     queryKey: ["asset", id],
-    queryFn: () => api.asset(id),
+    queryFn: ({ signal }) => api.asset(id, signal),
   });
 
+  // Escape closes the panel. The handler is an effect event, so the listener
+  // is registered once and still calls the latest onClose, whatever the
+  // parent passes on each render.
+  const close = useEffectEvent(onClose);
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => event.key === "Escape" && onClose();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, []);
 
   const risk = (scenario: string, hazard: View): Risk | undefined =>
     data?.risks.find((r) => r.scenario === scenario && r.hazard === hazard);

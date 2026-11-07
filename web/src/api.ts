@@ -129,9 +129,9 @@ export class ApiError extends Error {
   }
 }
 
-async function get<T>(path: string, params?: URLSearchParams): Promise<T> {
+async function get<T>(path: string, params?: URLSearchParams, signal?: AbortSignal): Promise<T> {
   const url = params && [...params].length ? `${path}?${params}` : path;
-  const response = await fetch(url, { headers: { Accept: "application/json" } });
+  const response = await fetch(url, { headers: { Accept: "application/json" }, signal });
   if (!response.ok) {
     let message = `The server answered ${response.status}`;
     try {
@@ -154,15 +154,28 @@ export function query(values: Record<string, string | number | string[] | undefi
   return params;
 }
 
+// Each call takes the query's abort signal, so a request the page no longer
+// wants (a scenario switched away from before its answer came) is cancelled.
 export const api = {
-  meta: () => get<Meta>("/api/meta"),
-  assets: (scenario: ScenarioKey, view: View) =>
-    get<GeoJSON.FeatureCollection>("/api/assets", query({ scenario, view })),
-  asset: (id: number) => get<Asset>(`/api/assets/${id}`),
-  summary: (scenario: ScenarioKey) => get<KindSummary[]>("/api/summary", query({ scenario })),
-  ranking: (scenario: ScenarioKey, view: View, kinds: Kind[], order: "score" | "change") =>
-    get<RankedAsset[]>("/api/ranking", query({ scenario, view, kind: kinds, order, limit: 25 })),
-  grid: (hazard: HazardKey, scenario: ScenarioKey, correction: GridSource) =>
-    get<GeoJSON.FeatureCollection>(`/api/grid/${hazard}`, query({ scenario, correction })),
+  meta: (signal?: AbortSignal) => get<Meta>("/api/meta", undefined, signal),
+  assets: (scenario: ScenarioKey, view: View, signal?: AbortSignal) =>
+    get<GeoJSON.FeatureCollection>("/api/assets", query({ scenario, view }), signal),
+  asset: (id: number, signal?: AbortSignal) => get<Asset>(`/api/assets/${id}`, undefined, signal),
+  summary: (scenario: ScenarioKey, signal?: AbortSignal) =>
+    get<KindSummary[]>("/api/summary", query({ scenario }), signal),
+  ranking: (
+    scenario: ScenarioKey,
+    view: View,
+    kinds: Kind[],
+    order: "score" | "change",
+    signal?: AbortSignal,
+  ) =>
+    get<RankedAsset[]>(
+      "/api/ranking",
+      query({ scenario, view, kind: kinds, order, limit: 25 }),
+      signal,
+    ),
+  grid: (hazard: HazardKey, scenario: ScenarioKey, correction: GridSource, signal?: AbortSignal) =>
+    get<GeoJSON.FeatureCollection>(`/api/grid/${hazard}`, query({ scenario, correction }), signal),
   exportUrl: (scenario: ScenarioKey) => `/api/export.csv?${query({ scenario })}`,
 };
