@@ -20,22 +20,23 @@ export function App() {
   const [aboutOpen, setAboutOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
 
-  const meta = useQuery({ queryKey: ["meta"], queryFn: api.meta });
+  const meta = useQuery({ queryKey: ["meta"], queryFn: ({ signal }) => api.meta(signal) });
   const assets = useQuery({
     queryKey: ["assets", state.scenario, state.view],
-    queryFn: () => api.assets(state.scenario, state.view),
+    queryFn: ({ signal }) => api.assets(state.scenario, state.view, signal),
     placeholderData: keepPreviousData,
   });
   const summary = useQuery({
     queryKey: ["summary", state.scenario],
-    queryFn: () => api.summary(state.scenario),
+    queryFn: ({ signal }) => api.summary(state.scenario, signal),
     placeholderData: keepPreviousData,
   });
   const canCompare = state.scenario !== "baseline";
   const effectiveOrder = canCompare ? order : "score";
   const ranking = useQuery({
     queryKey: ["ranking", state.scenario, state.view, state.kinds, effectiveOrder],
-    queryFn: () => api.ranking(state.scenario, state.view, state.kinds, effectiveOrder),
+    queryFn: ({ signal }) =>
+      api.ranking(state.scenario, state.view, state.kinds, effectiveOrder, signal),
     placeholderData: keepPreviousData,
   });
   const gridHazard: HazardKey | null =
@@ -43,12 +44,12 @@ export function App() {
   const gridSource = state.raw ? "raw" : "corrected";
   const grid = useQuery({
     queryKey: ["grid", gridHazard, state.scenario, gridSource],
-    queryFn: () => api.grid(gridHazard!, state.scenario, gridSource),
+    queryFn: ({ signal }) => api.grid(gridHazard!, state.scenario, gridSource, signal),
     enabled: gridHazard !== null,
   });
   const selected = useQuery({
     queryKey: ["asset", state.asset],
-    queryFn: () => api.asset(state.asset!),
+    queryFn: ({ signal }) => api.asset(state.asset!, signal),
     enabled: state.asset !== null,
   });
 
