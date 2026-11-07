@@ -8,6 +8,10 @@ RUN npm run build
 
 # The slim variant: core nginx only, without the curl, brotli and expat the full image carries.
 FROM nginxinc/nginx-unprivileged:1.31-alpine-slim@sha256:a8cb0f33d51fa107c96fd2bd3a71aaf564ec131e9d2bdf8700944f0ed8b170d7
+# Alpine's fixes (musl, zlib) land before a new nginx image does: upgraded, as the api image is.
+USER root
+RUN apk upgrade --no-cache
+USER 101
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /web/dist /usr/share/nginx/html
 EXPOSE 8080

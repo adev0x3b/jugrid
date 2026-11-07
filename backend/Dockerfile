@@ -11,9 +11,12 @@ COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --locked --no-default-groups --no-editable
 
 FROM python:3.14-slim@sha256:930e1abba7c4e8f96ed93e8012c35d174d7732752731bbd5e8e757d7ec6f3966
+# Debian's security fixes land before a new base image does, so the packages are upgraded:
+# CI fails the image on a fixable HIGH, and a pinned base alone falls behind within days.
 # rasterio's wheel bundles GDAL but links the system's expat. pip is not needed at run time,
 # and its vendored copies of urllib3, msgpack and setuptools lag behind their fixes.
 RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
  && apt-get install -y --no-install-recommends libexpat1 \
  && rm -rf /var/lib/apt/lists/* \
  && python -m pip uninstall --yes --quiet --root-user-action ignore pip
