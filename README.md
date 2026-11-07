@@ -82,6 +82,26 @@ The API and the ingest read `JUGRID_*` variables; the full list is in
 | `JUGRID_LOG_FORMAT` | `json` | `json` (one object per line, with request ids) or `text` |
 | `JUGRID_BIAS_CORRECTION` | `true` | Correct the projections with the shipped model (only where it was trained) |
 
+## Before exposing the app
+
+The compose stack can go public behind a reverse proxy or a tunnel (it runs at
+https://grid.juume.site behind a Cloudflare Tunnel):
+
+- Keep `WEB_BIND=127.0.0.1` and point the proxy at `http://127.0.0.1:8096`. Only the web
+  container publishes a port; the database, S3 and API stay on the compose network.
+- Set a real `DB_PASSWORD` before the first `docker compose up`.
+- nginx limits each visitor to 10 API requests a second (bursts of 40) and the CSV export to
+  6 a minute, keyed on Cloudflare's `CF-Connecting-IP` when present, and caches API answers for
+  their five minutes.
+- Logs rotate at 3 × 10 MB per container. The access log has no IP addresses, and the API
+  logs only method, path, status and timing.
+- Refresh the assets and scores once a month, as the AWS scheduler does; the climate data does
+  not change. With cron:
+
+  ```cron
+  0 4 1 * * cd ~/projects/jugrid && docker compose run --rm -T ingest jugrid ingest assets score
+  ```
+
 ## Deploying to AWS
 
 `infra/` is Terraform for one region of AWS:

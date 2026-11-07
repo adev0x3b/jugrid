@@ -154,6 +154,18 @@ describe("App", () => {
     expect(within(card).getByRole("row", { name: /Days above 35 °C/ })).toHaveTextContent("1.9");
   });
 
+  it("says in About the data what it keeps about visitors and where to ask", async () => {
+    api({});
+    renderWithQuery(<App />);
+    await userEvent.click(await screen.findByRole("button", { name: "About the data" }));
+    const privacy = screen.getByRole("region", { name: "Privacy" });
+    expect(privacy).toHaveTextContent("sets no cookies");
+    expect(within(privacy).getByRole("link", { name: "open an issue on GitHub" })).toHaveAttribute(
+      "href",
+      "https://github.com/adev0x3b/jugrid/issues",
+    );
+  });
+
   it("says so when the API is down", async () => {
     mockApi({});
     renderWithQuery(<App />);

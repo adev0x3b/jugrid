@@ -4,6 +4,8 @@ import { formatDate } from "../lib/format";
 import { KIND_LABEL } from "../lib/levels";
 import { CorrectionCard } from "./CorrectionCard";
 
+const ISSUES_URL = "https://github.com/adev0x3b/jugrid/issues";
+
 export function AboutDialog({
   meta,
   open,
@@ -173,6 +175,42 @@ export function AboutDialog({
               ))}
             </ul>
           )}
+        </section>
+
+        <section aria-labelledby="privacy-title">
+          <h3 id="privacy-title" className="mb-1 font-semibold">
+            Privacy
+          </h3>
+          <p>
+            JuGrid has no accounts, sets no cookies and runs no analytics; your browser only
+            remembers the theme you picked. The server logs each request's path and status, not your
+            IP address. The site is served through Cloudflare, and the base map comes from{" "}
+            <a
+              href="https://openfreemap.org"
+              target="_blank"
+              rel="noreferrer"
+              className="underline underline-offset-2"
+            >
+              OpenFreeMap
+            </a>
+            : both see your IP address, as any site you load from does. Questions or problems:{" "}
+            <a
+              href={ISSUES_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="underline underline-offset-2"
+            >
+              open an issue on GitHub
+            </a>
+            .
+          </p>
+          <p lang="it" className="mt-2 text-slate-600 dark:text-slate-400">
+            In italiano: JuGrid non ha account, non usa cookie né strumenti di statistica; il
+            browser ricorda solo il tema scelto. Il server registra percorso ed esito di ogni
+            richiesta, non il tuo indirizzo IP. Il sito passa da Cloudflare e la mappa di base
+            arriva da OpenFreeMap, che vedono il tuo indirizzo IP come qualsiasi sito da cui carichi
+            una pagina. Per domande o segnalazioni apri una issue su GitHub (link sopra).
+          </p>
         </section>
 
         <p className="text-xs text-slate-600 dark:text-slate-400">

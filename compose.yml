@@ -7,9 +7,14 @@ x-hardened: &hardened
   tmpfs: [/tmp]
   cap_drop: [ALL]
   security_opt: [no-new-privileges:true]
+  # Logs rotate at 3 x 10 MB per container, so a public instance cannot fill the disk.
+  logging: &logging
+    driver: json-file
+    options: { max-size: 10m, max-file: "3" }
 
 services:
   db:
+    logging: *logging
     image: postgis/postgis:18-3.6@sha256:4a43e3c3e5d55b9208240fc71db543b79c638766280c625a425bd0a2390989c4
     restart: unless-stopped
     environment:
@@ -27,6 +32,7 @@ services:
   # S3 for the Zarr climate store, as on AWS. SeaweedFS logs a heartbeat every 30 s;
   # `docker compose logs s3` shows it.
   s3:
+    logging: *logging
     image: chrislusf/seaweedfs:4.52@sha256:57877e32bb90073b37dc109b438ba66e84fd5ed9ced5f5c04f56444ef243ce59
     command: server -s3 -dir=/data -volume.max=20 -master.volumeSizeLimitMB=512
     restart: unless-stopped
